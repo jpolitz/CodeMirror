@@ -37,7 +37,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     // Handle Comments
     if (ch === '#') {
       stream.skipToEnd();
-      return ret(lastTok, lastContent, 'comment');
+      return ret(lastToken, lastContent, 'comment');
     }
     // Handle Number Literals
     if (stream.match(/^[0-9]+(\.[0-9]+)?/))
@@ -144,11 +144,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   Indent.prototype.sub = function(that) { return this.copy().subSelf(that); }
 
   function LineState(tokens,
-                     nestingsOpenFromPrevLine, nestingsFromPrevLine,
+                     nestingsAtLineStart, nestingsAtLineEnd,
                      deferedOpened, curOpened, deferedClosed, curClosed) {
     this.tokens = tokens;
-    this.nestingsOpenFromPrevLine = nestingsOpenFromPrevLine;
-    this.nestingsFromPrevLine = nestingsFromPrevLine;
+    this.nestingsAtLineStart = nestingsAtLineStart;
+    this.nestingsAtLineEnd = nestingsAtLineEnd;
     this.deferedOpened = deferedOpened;
     this.curOpened = curOpened;
     this.deferedClosed = deferedClosed;
@@ -156,14 +156,14 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
   LineState.prototype.copy = function() {
     return new LineState(this.tokens.concat([]),
-                         this.nestingsOpenFromPrevLine.copy(), this.nestingsFromPrevLine.copy(),
+                         this.nestingsAtLineStart.copy(), this.nestingsAtLineEnd.copy(),
                          this.deferedOpened.copy(), this.curOpened.copy(), 
                          this.deferedClosed.copy(), this.curClosed.copy());
   }
   LineState.prototype.print = function() {
     console.log("LineState for token " + lastToken + " is:");
-    console.log("  NestingsOpenFromPrevLine = " + this.nestingsOpenFromPrevLine);
-    console.log("  NestingsFromPrevLine = " + this.nestingsFromPrevLine);
+    console.log("  NestingsAtLineStart = " + this.nestingsAtLineStart);
+    console.log("  NestingsAtLineEnd = " + this.nestingsAtLineEnd);
     console.log("  DeferedOpened = " + this.deferedOpened);
     console.log("  DeferedClosed = " + this.deferedClosed);
     console.log("  CurOpened = " + this.curOpened);
@@ -186,7 +186,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
   function parse(firstTokenInLine, state, stream, style) {
     ls = state.lineState;
-    if (firstTokenInLine && hasTop(ls.tokens, "NEEDSOMETHING")) {
+    if (firstTokenInLine)
+      ls.nestingsAtLineStart = ls.nestingsAtLineEnd.copy();
+    if (hasTop(ls.tokens, "NEEDSOMETHING")) {
       ls.tokens.pop();
       if (hasTop(ls.tokens, "VAR") && ls.deferedOpened.v > 0) {
         ls.deferedOpened.v--;
@@ -198,7 +200,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (lastToken === ":") {
       if (hasTop(ls.tokens, "WANTCOLON") || hasTop(ls.tokens, "WANTCOLONOREQUAL"))
         ls.tokens.pop();
-      if (hasTop(ls.tokens, "OBJECT") || hasTop(ls.tokens, "SHARED")) {
+      else if (hasTop(ls.tokens, "OBJECT") || hasTop(ls.tokens, "SHARED")) {
         ls.deferedOpened.f++;
         ls.tokens.push("FIELD", "NEEDSOMETHING");
       }
@@ -217,9 +219,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
           ls.tokens.pop();
           ls.curClosed.v++;
         }
+        ls.deferedOpened.v++;
+        ls.tokens.push("VAR", "NEEDSOMETHING");
       }
-      ls.deferedOpened.v++;
-      ls.tokens.push("VAR", "NEEDSOMETHING");
     } else if (lastToken === "var") {
       ls.deferedOpened.v++;
       ls.tokens.push("VAR", "NEEDSOMETHING", "WANTCOLONOREQUAL");
@@ -255,7 +257,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (hasTop(ls.tokens, ["WANTOPENPAREN", "WANTCLOSEPAREN", "DATA"])) {
         ls.tokens.pop(); ls.tokens.pop();
         ls.deferedOpened.o++;
-        ls.push("OBJECT", "WANTCOLON");
+        ls.tokens.push("OBJECT", "WANTCOLON");
       }
     } else if (lastToken === "provide") {
       ls.tokens.push("PROVIDE");
@@ -264,10 +266,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop(); ls.tokens.pop();
         ls.curClosed.o++;
-        ls.push("SHARED", "WANTCOLON");
+        ls.tokens.push("SHARED", "WANTCOLON");
       } else if (hasTop(ls.tokens, "DATA")) {
         ls.tokens.pop();
-        ls.push("SHARED", "WANTCOLON");
+        ls.tokens.push("SHARED", "WANTCOLON");
       }
     } else if (lastToken === "check") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
@@ -373,7 +375,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
           else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
           else ls.curClosed.fn++;
           stillUnclosed = false;
-        } else if (top === "CASEs") {
+        } else if (top === "CASE") {
           if (ls.curOpened.c > 0) ls.curOpened.c--;
           else if (ls.deferedOpened.c > 0) ls.deferedOpened.c--;
           else ls.curClosed.c++;
@@ -398,7 +400,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
           else if (ls.deferedOpened.e > 0) ls.deferedOpened.e--;
           else ls.curClosed.e++;
           stillUnclosed = false;
-        } 
+        }
         ls.tokens.pop();
         top = peek(ls.tokens);
       }
@@ -408,12 +410,12 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       console.log("We think we're at an end of line");
       console.log("LineState is currently");
       ls.print();
-      ls.nestingsOpenFromPrevLine = ls.nestingsFromPrevLine.add(ls.curOpened).subSelf(ls.curClosed);
+      ls.nestingsAtLineStart.addSelf(ls.curOpened).subSelf(ls.curClosed);
       while (hasTop(ls.tokens, "VAR")) {
         ls.tokens.pop();
         ls.curClosed.v++;
       }
-      ls.nestingsFromPrevLine.addSelf(ls.curOpened).addSelf(ls.deferedOpened)
+      ls.nestingsAtLineEnd.addSelf(ls.curOpened).addSelf(ls.deferedOpened)
         .subSelf(ls.curClosed).subSelf(ls.deferedClosed);
       ls.tokens = ls.tokens.concat([]);
       ls.curOpened.zeroOut(); ls.deferedOpened.zeroOut();
@@ -434,15 +436,22 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var indentUnit = config.indentUnit;
     var taSS = new CodeMirror.StringStream(textAfter, config.tabSize);
     var sol = true;
-    state = copyState(state);
-    while (!taSS.eol()) {
-      var style = state.tokenizer(taSS, state);
-      parse(sol, state, taSS, style);
-      sol = false;
-    }
-    console.log("***** In indent");
+    console.log("***** In indent, before processing textAfter (" + textAfter + ")");
     state.lineState.print();
-    var indentSpec = state.lineState.nestingsFromPrevLine;
+    state = copyState(state);
+    if (/^\s*$/.test(textAfter)) {
+      state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
+    } else {
+      while (!taSS.eol()) {
+        var style = state.tokenizer(taSS, state);
+        if (style !== "IGNORED-SPACE")
+          parse(sol, state, taSS, style);
+        sol = false;
+      }
+    }
+    console.log("***** In indent, after processing textAfter (" + textAfter + ")");
+    state.lineState.print();
+    var indentSpec = state.lineState.nestingsAtLineStart;
     var indent = 0;
     for (var key in INDENTATION) {
       if (INDENTATION.hasOwnProperty(key))
@@ -465,6 +474,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                                  new Indent(), new Indent())
       };
     },
+    blankLine: function blankLine(state) {
+      console.log("*** In BlankLine");
+      state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
+      state.lineState.print();
+    },
 
     copyState: copyState,
       
@@ -483,7 +497,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     lineComment: "#",
 
-    electricChars: "d||}]+-/=<>",
+    electricChars: "d|]}+-/=<>.",
   };
   return external;
 });
