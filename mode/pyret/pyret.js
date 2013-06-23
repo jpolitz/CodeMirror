@@ -194,7 +194,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.deferedOpened.v--;
         ls.tokens.pop();
       }
-    } else if (firstTokenInLine && initial_operators[lastToken]) {
+    }
+    if (firstTokenInLine && initial_operators[lastToken]) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (lastToken === ":") {
@@ -405,11 +406,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         top = peek(ls.tokens);
       }
     }
-
     if (stream.match(/\s*$/, false)) { // End of line; close out nestings fields
-      console.log("We think we're at an end of line");
-      console.log("LineState is currently");
-      ls.print();
+      // console.log("We think we're at an end of line");
+      // console.log("LineState is currently");
+      // ls.print();
       ls.nestingsAtLineStart.addSelf(ls.curOpened).subSelf(ls.curClosed);
       while (hasTop(ls.tokens, "VAR")) {
         ls.tokens.pop();
@@ -421,8 +421,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       ls.curOpened.zeroOut(); ls.deferedOpened.zeroOut();
       ls.curClosed.zeroOut(); ls.deferedClosed.zeroOut();
     }
-    console.log("LineState is now");
-    ls.print();
+    // console.log("LineState is now");
+    // ls.print();
   }
 
 
@@ -436,8 +436,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var indentUnit = config.indentUnit;
     var taSS = new CodeMirror.StringStream(textAfter, config.tabSize);
     var sol = true;
-    console.log("***** In indent, before processing textAfter (" + textAfter + ")");
-    state.lineState.print();
+    // console.log("***** In indent, before processing textAfter (" + textAfter + ")");
+    // state.lineState.print();
     state = copyState(state);
     if (/^\s*$/.test(textAfter)) {
       state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
@@ -449,8 +449,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         sol = false;
       }
     }
-    console.log("***** In indent, after processing textAfter (" + textAfter + ")");
-    state.lineState.print();
+    // console.log("***** In indent, after processing textAfter (" + textAfter + ")");
+    // state.lineState.print();
     var indentSpec = state.lineState.nestingsAtLineStart;
     var indent = 0;
     for (var key in INDENTATION) {
@@ -475,16 +475,16 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       };
     },
     blankLine: function blankLine(state) {
-      console.log("*** In BlankLine");
+      // console.log("*** In BlankLine");
       state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
-      state.lineState.print();
+      // state.lineState.print();
     },
 
     copyState: copyState,
       
     token: function (stream, state) {
-      console.log("In token for stream = ");
-      console.log(stream);
+      // console.log("In token for stream = ");
+      // console.log(stream);
       var sol = stream.sol();
       var style = state.tokenizer(stream, state);
       if (style === "IGNORED-SPACE")
