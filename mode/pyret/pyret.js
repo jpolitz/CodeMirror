@@ -1,14 +1,14 @@
 CodeMirror.defineMode("pyret", function(config, parserConfig) {
   var ERRORCLASS = 'error';
   function wordRegexp(words) {
-    return new RegExp("^((" + words.join(")|(") + "))\\b");
+    return new RegExp("^((" + words.join(")|(") + "))(?![a-zA-Z0-9-_])");
   }
   
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
   const pyret_keywords = 
     wordRegexp(["fun", "method", "var", "when", "import", "provide", 
                 "data", "end", "except", "for", "from", 
-                "and", "or", "not", "as"]);
+                "and", "or", "not", "as", "if", "else"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "with", "sharing", "check", "case"]);
   const pyret_single_punctuation = 
@@ -67,9 +67,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     // Level 2
     if (match = stream.match(pyret_indent_regex)) {
       if (lastToken === "|") {
-        if (match[0] === "else")
-          return ret(match[0], match[0], 'keyword');
-        else if (stream.match(/\s*\(/, false))
+        if (stream.match(/\s*\(/, false))
           return ret('name', match[0],'function-name');
         else if (stream.match(/\s*=>/, false))
           return ret('name', match[0], 'variable');
@@ -241,6 +239,18 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (lastToken === "data") {
       ls.deferedOpened.d++;
       ls.tokens.push("DATA", "WANTCOLON", "NEEDSOMETHING");
+    } else if (lastToken === "if") {
+      if (hasTop(ls.tokens, "WANTCOLONORIF"))
+        ls.tokens.pop();
+      else
+        ls.deferedOpened.fn++;
+      ls.tokens.push("IF", "WANTCOLON", "NEEDSOMETHING");
+    } else if (lastToken === "else") {
+      if (hasTop(ls.tokens, "IF")) {
+        ls.curClosed.fn++;
+        ls.deferedOpened.fn++;
+        ls.tokens.push("WANTCOLONORIF");
+      }
     } else if (lastToken === "|") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"]) || hasTop(ls.tokens, ["FIELD", "OBJECT", "DATA"])) {
         ls.curClosed.o++;
@@ -371,7 +381,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
           else ls.curClosed.v++;
         } 
         // Things that are counted, and closable by end:
-        else if (top === "FUN" || top === "WHEN" || top === "FOR") {
+        else if (top === "FUN" || top === "WHEN" || top === "FOR" || top === "IF") {
           if (ls.curOpened.fn > 0) ls.curOpened.fn--;
           else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
           else ls.curClosed.fn++;
@@ -497,7 +507,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     lineComment: "#",
 
-    electricChars: "d|]}+-/=<>.",
+    electricChars: "de|]}+-/=<>.",
   };
   return external;
 });
