@@ -285,6 +285,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop();
         ls.curClosed.o++; ls.curClosed.d++; ls.deferedOpened.s++;
+      } else if (hasTop(ls.tokens, "DATA")) {
+        ls.curClosed.d++; ls.deferedOpened.s++;
       } else if (hasTop(ls.tokens, "FUN")) {
         ls.curClosed.f++; ls.deferedOpened.s++;
       } else if (hasTop(ls.tokens, "SHARED")) {
