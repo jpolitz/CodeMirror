@@ -8,7 +8,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_keywords = 
     wordRegexp(["fun", "method", "var", "when", "import", "provide", 
                 "data", "end", "except", "for", "from", 
-                "and", "or", "not", "as", "if", "else", "else if"]);
+                "and", "or", "not", "as", "if", "else"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "with", "sharing", "check", "cases"]);
   const pyret_single_punctuation = 
@@ -239,23 +239,18 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       ls.deferedOpened.d++;
       ls.tokens.push("DATA", "WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "if") {
-      ls.deferedOpened.fn++;
+      if (hasTop(ls.tokens, "WANTCOLONORIF"))
+        ls.tokens.pop();
+      else
+        ls.deferedOpened.fn++;
       ls.tokens.push("IF", "WANTCOLON", "NEEDSOMETHING");
-    } else if (state.lastToken === "else if") {
-      if (hasTop(ls.tokens, "IF")) {
-        if (ls.curOpened.fn > 0) ls.curOpened.fn--;
-        else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
-        else ls.curClosed.fn++;
-      }
-      ls.deferedOpened.fn++;
-      ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "else") {
       if (hasTop(ls.tokens, "IF")) {
         if (ls.curOpened.fn > 0) ls.curOpened.fn--;
         else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
         else ls.curClosed.fn++;
         ls.deferedOpened.fn++;
-        ls.tokens.push("WANTCOLON");
+        ls.tokens.push("WANTCOLONORIF");
       }
     } else if (state.lastToken === "|") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"]) || hasTop(ls.tokens, ["FIELD", "OBJECT", "DATA"])) {
