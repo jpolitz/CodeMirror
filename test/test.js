@@ -155,6 +155,16 @@ testCM("indent", function(cm) {
   eq(cm.getLine(1), "\t\t  blah();");
 }, {value: "if (x) {\nblah();\n}", indentUnit: 3, indentWithTabs: true, tabSize: 8});
 
+testCM("indentByNumber", function(cm) {
+  cm.indentLine(0, 2);
+  eq(cm.getLine(0), "  foo");
+  cm.indentLine(0, -200);
+  eq(cm.getLine(0), "foo");
+  cm.setSelection(Pos(0, 0), Pos(1, 2));
+  cm.indentSelection(3);
+  eq(cm.getValue(), "   foo\n   bar\nbaz");
+}, {value: "foo\nbar\nbaz"});
+
 test("core_defaults", function() {
   var defsCopy = {}, defs = CodeMirror.defaults;
   for (var opt in defs) defsCopy[opt] = defs[opt];
@@ -211,15 +221,18 @@ testCM("coords", function(cm) {
 
 testCM("coordsChar", function(cm) {
   addDoc(cm, 35, 70);
-  for (var ch = 0; ch <= 35; ch += 5) {
-    for (var line = 0; line < 70; line += 5) {
-      cm.setCursor(line, ch);
-      var coords = cm.charCoords(Pos(line, ch));
-      var pos = cm.coordsChar({left: coords.left, top: coords.top + 5});
-      eqPos(pos, Pos(line, ch));
+  for (var i = 0; i < 2; ++i) {
+    var sys = i ? "local" : "page";
+    for (var ch = 0; ch <= 35; ch += 5) {
+      for (var line = 0; line < 70; line += 5) {
+        cm.setCursor(line, ch);
+        var coords = cm.charCoords(Pos(line, ch), sys);
+        var pos = cm.coordsChar({left: coords.left + 1, top: coords.top + 1}, sys);
+        eqPos(pos, Pos(line, ch));
+      }
     }
   }
-});
+}, {lineNumbers: true});
 
 testCM("posFromIndex", function(cm) {
   cm.setValue(
@@ -447,6 +460,13 @@ testCM("markClearBetween", function(cm) {
   eq(cm.findMarksAt(Pos(1, 1)).length, 0);
 });
 
+testCM("deleteSpanCollapsedInclusiveLeft", function(cm) {
+  var from = Pos(1, 0), to = Pos(1, 1);
+  var m = cm.markText(from, to, {collapsed: true, inclusiveLeft: true});
+  // Delete collapsed span.
+  cm.replaceRange("", from, to);
+}, {value: "abc\nX\ndef"});
+
 testCM("bookmark", function(cm) {
   function p(v) { return v && Pos(v[0], v[1]); }
   forEach([{a: [1, 0], b: [1, 1], c: "", d: [1, 4]},
@@ -478,6 +498,42 @@ testCM("bookmarkInsertLeft", function(cm) {
   eqPos(br.find(), Pos(0, 1));
   eqPos(bl.find(), Pos(0, 1));
 }, {value: "abcdef"});
+
+testCM("bookmarkCursor", function(cm) {
+  var pos01 = cm.cursorCoords(Pos(0, 1)), pos11 = cm.cursorCoords(Pos(1, 1)),
+      pos20 = cm.cursorCoords(Pos(2, 0)), pos30 = cm.cursorCoords(Pos(3, 0)),
+      pos41 = cm.cursorCoords(Pos(4, 1));
+  cm.setBookmark(Pos(0, 1), {widget: document.createTextNode("←"), insertLeft: true});
+  cm.setBookmark(Pos(2, 0), {widget: document.createTextNode("←"), insertLeft: true});
+  cm.setBookmark(Pos(1, 1), {widget: document.createTextNode("→")});
+  cm.setBookmark(Pos(3, 0), {widget: document.createTextNode("→")});
+  var new01 = cm.cursorCoords(Pos(0, 1)), new11 = cm.cursorCoords(Pos(1, 1)),
+      new20 = cm.cursorCoords(Pos(2, 0)), new30 = cm.cursorCoords(Pos(3, 0));
+  is(new01.left == pos01.left && new01.top == pos01.top, "at left, middle of line");
+  is(new11.left > pos11.left && new11.top == pos11.top, "at right, middle of line");
+  is(new20.left == pos20.left && new20.top == pos20.top, "at left, empty line");
+  is(new30.left > pos30.left && new30.top == pos30.top, "at right, empty line");
+  cm.setBookmark(Pos(4, 0), {widget: document.createTextNode("→")});
+  is(cm.cursorCoords(Pos(4, 1)).left > pos41.left, "single-char bug");
+}, {value: "foo\nbar\n\n\nx\ny"});
+
+testCM("multiBookmarkCursor", function(cm) {
+  if (phantom) return;
+  var ms = [], m;
+  function add(insertLeft) {
+    for (var i = 0; i < 3; ++i) {
+      var node = document.createElement("span");
+      node.innerHTML = "X";
+      ms.push(cm.setBookmark(Pos(0, 1), {widget: node, insertLeft: insertLeft}));
+    }
+  }
+  var base1 = cm.cursorCoords(Pos(0, 1)).left, base4 = cm.cursorCoords(Pos(0, 4)).left;
+  add(true);
+  eq(base1, cm.cursorCoords(Pos(0, 1)).left);
+  while (m = ms.pop()) m.clear();
+  add(false);
+  eq(base4, cm.cursorCoords(Pos(0, 1)).left);
+}, {value: "abcdefg"});
 
 testCM("getAllMarks", function(cm) {
   addDoc(cm, 10, 10);
@@ -511,6 +567,25 @@ testCM("scrollSnap", function(cm) {
   cm.setCursor(Pos(199, 0));
   info = cm.getScrollInfo();
   is(info.left == 0 && info.top + 2 > info.height - cm.getScrollerElement().clientHeight, "scrolled clean to bottom");
+});
+
+testCM("scrollIntoView", function(cm) {
+  if (phantom) return;
+  var outer = cm.getWrapperElement().getBoundingClientRect();
+  function test(line, ch) {
+    var pos = Pos(line, ch);
+    cm.scrollIntoView(pos);
+    var box = cm.charCoords(pos, "window");
+    is(box.left >= outer.left && box.right <= outer.right &&
+       box.top >= outer.top && box.bottom <= outer.bottom);
+  }
+  addDoc(cm, 200, 200);
+  test(199, 199);
+  test(0, 0);
+  test(100, 100);
+  test(199, 0);
+  test(0, 199);
+  test(100, 100);
 });
 
 testCM("selectionPos", function(cm) {
@@ -684,6 +759,7 @@ testCM("everythingFolded", function(cm) {
 });
 
 testCM("structuredFold", function(cm) {
+  if (phantom) return;
   addDoc(cm, 4, 8);
   var range = cm.markText(Pos(1, 2), Pos(6, 2), {
     replacedWith: document.createTextNode("Q")
@@ -697,7 +773,7 @@ testCM("structuredFold", function(cm) {
   eq(cm.getValue(), "xxxx\nxxxx\nxxxx");
   addDoc(cm, 4, 8);
   range = cm.markText(Pos(1, 2), Pos(6, 2), {
-    replacedWith: document.createTextNode("x"),
+    replacedWith: document.createTextNode("M"),
     clearOnEnter: true
   });
   var cleared = 0;
@@ -718,6 +794,12 @@ testCM("structuredFold", function(cm) {
   cm.setCursor(1, 2);
   CodeMirror.commands.goCharRight(cm);
   eqPos(cm.getCursor(), Pos(1, 3));
+  range = cm.markText(Pos(2, 0), Pos(4, 4), {
+    replacedWith: document.createTextNode("M")
+  });
+  cm.setCursor(1, 0);
+  CodeMirror.commands.goLineDown(cm);
+  eqPos(cm.getCursor(), Pos(2, 0));
 }, null);
 
 testCM("nestedFold", function(cm) {
@@ -756,6 +838,48 @@ testCM("badNestedFold", function(cm) {
   is(caught instanceof Error, "no error");
   is(/overlap/i.test(caught.message), "wrong error");
 });
+
+testCM("wrappingInlineWidget", function(cm) {
+  cm.setSize("11em");
+  var w = document.createElement("span");
+  w.style.color = "red";
+  w.innerHTML = "one two three four";
+  cm.markText(Pos(0, 6), Pos(0, 9), {replacedWith: w});
+  var cur0 = cm.cursorCoords(Pos(0, 0)), cur1 = cm.cursorCoords(Pos(0, 10));
+  is(cur0.top < cur1.top);
+  is(cur0.bottom < cur1.bottom);
+  var curL = cm.cursorCoords(Pos(0, 6)), curR = cm.cursorCoords(Pos(0, 9));
+  eq(curL.top, cur0.top);
+  eq(curL.bottom, cur0.bottom);
+  eq(curR.top, cur1.top);
+  eq(curR.bottom, cur1.bottom);
+  cm.replaceRange("", Pos(0, 9), Pos(0));
+  curR = cm.cursorCoords(Pos(0, 9));
+  eq(curR.top, cur1.top);
+  eq(curR.bottom, cur1.bottom);
+}, {value: "1 2 3 xxx 4", lineWrapping: true});
+
+testCM("changedInlineWidget", function(cm) {
+  cm.setSize("10em");
+  var w = document.createElement("span");
+  w.innerHTML = "x";
+  var m = cm.markText(Pos(0, 4), Pos(0, 5), {replacedWith: w});
+  w.innerHTML = "and now the widget is really really long all of a sudden and a scrollbar is needed";
+  m.changed();
+  var hScroll = byClassName(cm.getWrapperElement(), "CodeMirror-hscrollbar")[0];
+  is(hScroll.scrollWidth > hScroll.clientWidth);
+}, {value: "hello there"});
+
+testCM("changedBookmark", function(cm) {
+  cm.setSize("10em");
+  var w = document.createElement("span");
+  w.innerHTML = "x";
+  var m = cm.setBookmark(Pos(0, 4), {widget: w});
+  w.innerHTML = "and now the widget is really really long all of a sudden and a scrollbar is needed";
+  m.changed();
+  var hScroll = byClassName(cm.getWrapperElement(), "CodeMirror-hscrollbar")[0];
+  is(hScroll.scrollWidth > hScroll.clientWidth);
+}, {value: "abcdefg"});
 
 testCM("inlineWidget", function(cm) {
   var w = cm.setBookmark(Pos(0, 2), {widget: document.createTextNode("uu")});
