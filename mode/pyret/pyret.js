@@ -10,7 +10,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "data", "end", "except", "for", "from", 
                 "and", "or", "not", "as", "if", "else", "cases"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "with", "sharing", "check"]);
+    wordRegexp(["doc", "try", "with", "sharing", "where"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
                         ";", "|", "=", "+", "*", "/", "\\", // NOTE: No minus
@@ -283,7 +283,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
         ls.tokens.push("SHARED", "WANTCOLON");
       }
-    } else if (state.lastToken === "check") {
+    } else if (state.lastToken === "where") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop();
         ls.curClosed.o++; ls.curClosed.d++; ls.deferedOpened.s++;
@@ -295,7 +295,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.curClosed.s++; ls.deferedOpened.s++;
       }
       ls.tokens.pop();
-      ls.tokens.push("CHECK", "WANTCOLON");
+      ls.tokens.push("WHERE", "WANTCOLON");
     } else if (state.lastToken === "try") {
       ls.deferedOpened.t++;
       ls.tokens.push("TRY", "WANTCOLON");
@@ -399,7 +399,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
           else if (ls.deferedOpened.d > 0) ls.deferedOpened.d--;
           else ls.curClosed.d++;
           stillUnclosed = false;
-        } else if (top === "SHARED" || top === "CHECK") {
+        } else if (top === "SHARED" || top === "WHERE") {
           if (ls.curOpened.s > 0) ls.curOpened.s--;
           else if (ls.deferedOpened.s > 0) ls.deferedOpened.s--;
           else ls.curClosed.s++;
