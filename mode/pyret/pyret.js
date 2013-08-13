@@ -10,7 +10,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "data", "end", "except", "for", "from", 
                 "and", "or", "not", "as", "if", "else", "cases"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "with", "sharing", "where"]);
+    wordRegexp(["doc", "try", "with", "sharing", "where", "check"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
                         ";", "|", "=", "+", "*", "/", "\\", // NOTE: No minus
@@ -295,6 +295,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.curClosed.s++; ls.deferedOpened.s++;
       }
       ls.tokens.pop();
+      ls.tokens.push("WHERE", "WANTCOLON");
+    } else if (state.lastToken === "check" && ls.tokens.length === 0) {
+      ls.deferedOpened.s++;
       ls.tokens.push("WHERE", "WANTCOLON");
     } else if (state.lastToken === "try") {
       ls.deferedOpened.t++;
