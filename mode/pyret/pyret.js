@@ -43,9 +43,15 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       return ret(state, 'number', stream.current(), 'number');
     
     if (ch === '"') {
-      state.tokenizer = tokenString;
+      state.tokenizer = tokenStringDouble;
       state.lastToken = '"';
       stream.eat('"');
+      return state.tokenizer(stream, state);
+    }
+    if (ch === "'") {
+      state.tokenizer = tokenStringSingle;
+      state.lastToken = "'";
+      stream.eat("'");
       return state.tokenizer(stream, state);
     }
     // Level 1
@@ -85,21 +91,28 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     stream.next();
     return null;
   }
-  function tokenString(stream, state) { 
-    while (!stream.eol()) {
-      stream.eatWhile(/[^"\\]/);
-      if (stream.eat('\\')) {
-        stream.next();
-        if (stream.eol())
+  function mkTokenString(singleOrDouble) {
+    return function(stream, state) {
+      var insideRE = singleOrDouble === "'" ? /[^'\\]/ : /[^"\\]/;
+      var endRE = singleOrDouble === "'" ? /'/ : /"/;
+      while (!stream.eol()) {
+        stream.eatWhile(insideRE);
+        if (stream.eat('\\')) {
+          stream.next();
+          if (stream.eol())
+            return ret(state, 'string', stream.current(), 'string');
+        } else if (stream.eat(singleOrDouble)) {
+          state.tokenizer = tokenBase;
           return ret(state, 'string', stream.current(), 'string');
-      } else if (stream.eat('"')) {
-        state.tokenizer = tokenBase;
-        return ret(state, 'string', stream.current(), 'string');
-      } else
-        stream.eat(/"/);
-    }
-    return ret(state, 'string', stream.current(), 'string');
+        } else
+          stream.eat(endRE);
+      }
+      return ret(state, 'string', stream.current(), 'string');
+    };
   }
+
+  var tokenStringDouble = mkTokenString('"');
+  var tokenStringSingle = mkTokenString("'");
 
   // Parsing
 
