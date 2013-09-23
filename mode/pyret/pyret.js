@@ -10,7 +10,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "data", "end", "except", "for", "from", 
                 "and", "or", "not", "as", "if", "else", "cases"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "with", "sharing", "where", "check"]);
+    wordRegexp(["doc", "try", "with", "sharing", "where", "check", "graph", "block"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
                         ";", "|", "=", "+", "*", "/", "\\", // NOTE: No minus
@@ -116,13 +116,14 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
   // Parsing
 
-  function Indent(funs, cases, data, shared, trys, except, parens, objects, vars, fields, initial) {
+  function Indent(funs, cases, data, shared, trys, except, graph, parens, objects, vars, fields, initial) {
     this.fn = funs || 0;
     this.c = cases || 0;
     this.d = data || 0;
     this.s = shared || 0;
     this.t = trys || 0;
     this.e = except || 0;
+    this.g = graph || 0;
     this.p = parens || 0;
     this.o = objects || 0;
     this.v = vars || 0;
@@ -131,24 +132,25 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
   Indent.prototype.toString = function() {
     return ("Fun " + this.fn + ", Cases " + this.c + ", Data " + this.d + ", Shared " + this.s
-            + ", Try " + this.t + ", Except " + this.e + ", Parens " + this.p 
+            + ", Try " + this.t + ", Except " + this.e + ", Graph " + this.g + ", Parens " + this.p 
             + ", Object " + this.o + ", Vars " + this.v + ", Fields " + this.f + ", Initial " + this.i);
   }
   Indent.prototype.copy = function() {
-    return new Indent(this.fn, this.c, this.d, this.s, this.t, this.e, this.p, this.o, this.v, this.f, this.i);
+    return new Indent(this.fn, this.c, this.d, this.s, this.t, this.e, this.g, 
+                      this.p, this.o, this.v, this.f, this.i);
   }
   Indent.prototype.zeroOut = function() {
-    this.fn = this.c = this.d = this.s = this.t = this.e = this.p = this.o = this.v = this.f = this.i = 0;
+    this.fn = this.c = this.d = this.s = this.t = this.e = this.g = this.p = this.o = this.v = this.f = this.i = 0;
   }
   Indent.prototype.addSelf = function(that) {
-    this.fn += that.fn; this.c += that.c; this.d += that.d; this.s += that.s; this.t += that.t;
-    this.e += that.e; this.p += that.p; this.o += that.o; this.v += that.v; this.f += that.f; this.i += that.i;
+    this.fn += that.fn; this.c += that.c; this.d += that.d; this.s += that.s; this.t += that.t; this.e += that.e;
+    this.g += that.g; this.p += that.p; this.o += that.o; this.v += that.v; this.f += that.f; this.i += that.i;
     return this;
   }
   Indent.prototype.add = function(that) { return this.copy().addSelf(that); }
   Indent.prototype.subSelf = function(that) {
-    this.fn -= that.fn; this.c -= that.c; this.d -= that.d; this.s -= that.s; this.t -= that.t;
-    this.e -= that.e; this.p -= that.p; this.o -= that.o; this.v -= that.v; this.f -= that.f; this.i -= that.i;
+    this.fn -= that.fn; this.c -= that.c; this.d -= that.d; this.s -= that.s; this.t -= that.t; that.e -= that.e;
+    this.g -= that.g; this.p -= that.p; this.o -= that.o; this.v -= that.v; this.f -= that.f; this.i -= that.i;
     return this;
   }
   Indent.prototype.sub = function(that) { return this.copy().subSelf(that); }
@@ -299,7 +301,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "where") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop();
-        ls.curClosed.o++; ls.curClosed.d++; ls.deferedOpened.s++;
+        // ls.curClosed.o++; 
+        ls.curClosed.d++; ls.deferedOpened.s++;
       } else if (hasTop(ls.tokens, "DATA")) {
         ls.curClosed.d++; ls.deferedOpened.s++;
       } else if (hasTop(ls.tokens, "FUN")) {
@@ -308,10 +311,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.curClosed.s++; ls.deferedOpened.s++;
       }
       ls.tokens.pop();
-      ls.tokens.push("WHERE", "WANTCOLON");
+      ls.tokens.push("CHECK", "WANTCOLON");
     } else if (state.lastToken === "check" && ls.tokens.length === 0) {
       ls.deferedOpened.s++;
-      ls.tokens.push("WHERE", "WANTCOLON");
+      ls.tokens.push("CHECK", "WANTCOLON");
     } else if (state.lastToken === "try") {
       ls.deferedOpened.t++;
       ls.tokens.push("TRY", "WANTCOLON");
@@ -323,6 +326,12 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
         ls.tokens.push("WANTCOLON", "WANTCLOSEPAREN", "WANTOPENPAREN");
       }
+    } else if (state.lastToken === "block") {
+      ls.deferedOpened.fn++;
+      ls.tokens.push("BLOCK", "WANTCOLON");
+    } else if (state.lastToken === "graph") {
+      ls.deferedOpened.g++;
+      ls.tokens.push("GRAPH", "WANTCOLON");
     } else if (state.lastToken === "[") {
       ls.deferedOpened.o++;
       ls.tokens.push("ARRAY");
@@ -371,12 +380,20 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
         ls.deferedClosed.v++;
       }
-    } else if (state.lastToken === "end") {
+    } else if (state.lastToken === "end" || state.lastToken === ";") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.curClosed.o++;
         ls.tokens.pop();
       }
       var top = peek(ls.tokens);
+      var is_semi, which_to_close;
+      if (state.lastToken === ";") {
+        is_semi = true;
+        which_to_close = ls.deferedClosed;
+      } else {
+        is_semi = false;
+        which_to_close = ls.curClosed;
+      }
       var stillUnclosed = true;
       while (stillUnclosed && ls.tokens.length) {
         // Things that are not counted at all:
@@ -385,50 +402,55 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         if (top === "OBJECT" || top === "ARRAY") {
           if (ls.curOpened.o > 0) ls.curOpened.o--;
           else if (ls.deferedOpened.o > 0) ls.deferedOpened.o--;
-          else ls.curClosed.o++;
+          else which_to_close.o++;
         } else if (top === "WANTCLOSEPAREN") {
           if (ls.curOpened.p > 0) ls.curOpened.p--;
           else if (ls.deferedOpened.p > 0) ls.deferedOpened.p--;
-          else ls.curClosed.p++;
+          else which_to_close.p++;
         } else if (top === "FIELD") {
           if (ls.curOpened.f > 0) ls.curOpened.f--;
           else if (ls.deferedOpened.f > 0) ls.deferedOpened.f--;
-          else ls.curClosed.f++;
+          else which_to_close.f++;
         } else if (top === "VAR") {
           if (ls.curOpened.v > 0) ls.curOpened.v--;
           else if (ls.deferedOpened.v > 0) ls.deferedOpened.v--;
-          else ls.curClosed.v++;
+          else which_to_close.v++;
         } 
         // Things that are counted, and closable by end:
-        else if (top === "FUN" || top === "WHEN" || top === "FOR" || top === "IF") {
+        else if (top === "FUN" || top === "WHEN" || top === "FOR" || top === "IF" || top === "BLOCK") {
           if (ls.curOpened.fn > 0) ls.curOpened.fn--;
           else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
-          else ls.curClosed.fn++;
+          else which_to_close.fn++;
           stillUnclosed = false;
         } else if (top === "CASES") {
           if (ls.curOpened.c > 0) ls.curOpened.c--;
           else if (ls.deferedOpened.c > 0) ls.deferedOpened.c--;
-          else ls.curClosed.c++;
+          else which_to_close.c++;
           stillUnclosed = false;
         } else if (top === "DATA") {
           if (ls.curOpened.d > 0) ls.curOpened.d--;
           else if (ls.deferedOpened.d > 0) ls.deferedOpened.d--;
-          else ls.curClosed.d++;
+          else which_to_close.d++;
           stillUnclosed = false;
-        } else if (top === "SHARED" || top === "WHERE") {
+        } else if (top === "SHARED" || top === "CHECK") {
           if (ls.curOpened.s > 0) ls.curOpened.s--;
           else if (ls.deferedOpened.s > 0) ls.deferedOpened.s--;
-          else ls.curClosed.s++;
+          else which_to_close.s++;
           stillUnclosed = false;
         } else if (top === "TRY") {
           if (ls.curOpened.t > 0) ls.curOpened.t--;
           else if (ls.deferedOpened.t > 0) ls.deferedOpened.t--;
-          else ls.curClosed.t++;
+          else which_to_close.t++;
           stillUnclosed = false;
         } else if (top === "EXCEPT") {
           if (ls.curOpened.e > 0) ls.curOpened.e--;
           else if (ls.deferedOpened.e > 0) ls.deferedOpened.e--;
-          else ls.curClosed.e++;
+          else which_to_close.e++;
+          stillUnclosed = false;
+        } else if (top === "GRAPH") {
+          if (ls.curOpened.g > 0) ls.curOpened.g--
+          else if (ls.deferedOpened.g > 0) ls.deferedOpened.g--;
+          else which_to_close.g++;
           stillUnclosed = false;
         }
         ls.tokens.pop();
@@ -455,7 +477,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
 
 
-  const INDENTATION = new Indent(1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1);
+  const INDENTATION = new Indent(1, 2, 2, 1, 1, 1, 1/*could be 0*/, 1, 1, 1, 1, 1);
 
   function copyState(oldState) {
     return { tokenizer: oldState.tokenizer, lineState: oldState.lineState.copy(),
