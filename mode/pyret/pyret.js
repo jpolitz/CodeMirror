@@ -36,7 +36,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     // Handle Comments
     if (ch === '#') {
       stream.skipToEnd();
-      return ret(state, state.lastToken, state.lastContent, 'comment');
+      return ret(state, "COMMENT", state.lastContent, 'comment');
     }
     // Handle Number Literals
     if (stream.match(/^[0-9]+(\.[0-9]+)?/))
