@@ -211,7 +211,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (state.lastToken === ":") {
-      if (hasTop(ls.tokens, "WANTCOLON") || hasTop(ls.tokens, "WANTCOLONOREQUAL"))
+      if (hasTop(ls.tokens, "WANTCOLON") || hasTop(ls.tokens, "WANTCOLONOREQUAL") || hasTop(ls.tokens, "WANTCOLONORIF"))
         ls.tokens.pop();
       else if (hasTop(ls.tokens, "OBJECT") || hasTop(ls.tokens, "SHARED")) {
         ls.deferedOpened.f++;
