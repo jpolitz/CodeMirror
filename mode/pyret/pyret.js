@@ -256,9 +256,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "if") {
       if (hasTop(ls.tokens, "WANTCOLONORIF"))
         ls.tokens.pop();
-      else
+      else {
         ls.deferedOpened.fn++;
-      ls.tokens.push("IF", "WANTCOLON", "NEEDSOMETHING");
+        ls.tokens.push("IF");
+      }
+      ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "else") {
       if (hasTop(ls.tokens, "IF")) {
         if (ls.curOpened.fn > 0) ls.curOpened.fn--;
