@@ -58,9 +58,13 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var match;
     if ((match = stream.match(pyret_double_punctuation, true)) || 
         (match = stream.match(pyret_single_punctuation, true))) {
+      if (state.dataNoPipeColon && (match[0] == ":" || match[0] == "|"))
+        state.dataNoPipeColon = false;
       return ret(state, match[0], match[0], 'builtin');
     }
     if (match = stream.match(pyret_keywords, true)) {
+      if (match[0] == "data")
+        state.dataNoPipeColon = true;
       return ret(state, match[0], match[0], 'keyword');
     }
     if (match = stream.match(pyret_keywords_colon, true)) {
@@ -71,16 +75,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     }
     // Level 2
     if (match = stream.match(pyret_indent_regex)) {
-      if (state.lastToken === "|") {
-        if (stream.match(/\s*\(/, false))
-          return ret(state, 'name', match[0],'function-name');
-        else if (stream.match(/\s*=>/, false))
-          return ret(state, 'name', match[0], 'variable');
-        else if (stream.match(/\s*($|with\b|\()/, false))
-          return ret(state, 'name', match[0], 'type');
-      } else if (state.lastToken === "::")
-        return ret(state, 'name', match[0], 'type');
-      else if (state.lastToken === "data")
+      if (state.lastToken === "|" || state.lastToken === "::" || state.lastToken === "data"
+          || state.dataNoPipeColon)
+        state.dataNoPipeColon = false;
         return ret(state, 'name', match[0], 'type');
       else if (stream.match(/\s*\(/, false))
         return ret(state, 'name', match[0], 'function-name');
@@ -483,7 +480,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
   function copyState(oldState) {
     return { tokenizer: oldState.tokenizer, lineState: oldState.lineState.copy(),
-             lastToken: oldState.lastToken, lastContent: oldState.lastContent }
+             lastToken: oldState.lastToken, lastContent: oldState.lastContent,
+             dataNoPipeColon: oldState.dataNoPipeColon }
   }
   
   function indent(state, textAfter) {
