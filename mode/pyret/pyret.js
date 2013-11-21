@@ -77,9 +77,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     // Level 2
     if (match = stream.match(pyret_indent_regex)) {
       if (state.lastToken === "|" || state.lastToken === "::" || state.lastToken === "data"
-          || state.dataNoPipeColon)
+          || state.dataNoPipeColon) {
         state.dataNoPipeColon = false;
         return ret(state, 'name', match[0], 'type');
+      }
       else if (stream.match(/\s*\(/, false))
         return ret(state, 'name', match[0], 'function-name');
       return ret(state, 'name', match[0], 'variable');
