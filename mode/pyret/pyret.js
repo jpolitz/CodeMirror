@@ -18,7 +18,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_double_punctuation = 
     new RegExp("^((" + ["::", "==", ">=", "<=", "=>", "->", ":=", "<>"].join(")|(") + "))");
   const initial_operators = { "-": true, "+": true, "*": true, "/": true, "<": true, "<=": true,
-                              ">": true, ">=": true, "==": true, "<>": true, ".": true, "^": true }
+                              ">": true, ">=": true, "==": true, "<>": true, ".": true, "^": true,
+                              "is": true, "raises": true, "satisfies": true }
   
   
   function ret(state, tokType, content, style) {
