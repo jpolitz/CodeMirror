@@ -11,6 +11,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "and", "or", "not", "as", "if", "else", "cases"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "with", "sharing", "where", "check", "graph", "block"]);
+    wordRegexp(["doc", "try", "then", "with", "sharing", "where", "check", "graph", "block"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
                         ";", "|", "=", "+", "*", "/", "\\", // NOTE: No minus
@@ -63,6 +64,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       return ret(state, match[0], match[0], 'builtin');
     }
     if (match = stream.match(pyret_keywords, true)) {
+      if (match[0] == "if" && stream.peek() === ":")
+        return ret(state, 'if:', 'if:', 'keyword');
       if (match[0] == "data")
         state.dataNoPipeColon = true;
       return ret(state, match[0], match[0], 'keyword');
