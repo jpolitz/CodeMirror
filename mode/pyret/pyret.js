@@ -10,7 +10,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "data", "end", "except", "for", "from", 
                 "and", "or", "not", "as", "if", "else", "cases"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "with", "sharing", "where", "check", "graph", "block"]);
     wordRegexp(["doc", "try", "then", "with", "sharing", "where", "check", "graph", "block"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
@@ -19,7 +18,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_double_punctuation = 
     new RegExp("^((" + ["::", "==", ">=", "<=", "=>", "->", ":=", "<>"].join(")|(") + "))");
   const initial_operators = { "-": true, "+": true, "*": true, "/": true, "<": true, "<=": true,
-                              ">": true, ">=": true, "==": true, "<>": true, ".": true, "^": true }
+                              ">": true, ">=": true, "==": true, "<>": true, ".": true, "^": true,
+                              "is": true, "raises": true, "satisfies": true }
   
   
   function ret(state, tokType, content, style) {
@@ -254,6 +254,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "data") {
       ls.deferedOpened.d++;
       ls.tokens.push("DATA", "WANTCOLON", "NEEDSOMETHING");
+    } else if (state.lastToken === "if:") {
+      ls.deferedOpened.c++;
+      ls.tokens.push("IFCOND");
     } else if (state.lastToken === "if") {
       if (hasTop(ls.tokens, "WANTCOLONORIF"))
         ls.tokens.pop();
@@ -425,7 +428,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
           else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
           else which_to_close.fn++;
           stillUnclosed = false;
-        } else if (top === "CASES") {
+        } else if (top === "CASES" || top === "IFCOND") {
           if (ls.curOpened.c > 0) ls.curOpened.c--;
           else if (ls.deferedOpened.c > 0) ls.deferedOpened.c--;
           else which_to_close.c++;
