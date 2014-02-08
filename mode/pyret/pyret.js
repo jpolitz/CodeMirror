@@ -10,7 +10,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "data", "end", "except", "for", "from", 
                 "and", "or", "not", "as", "if", "else", "cases"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "then", "with", "sharing", "where", "check", "graph", "block"]);
+    wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "check", "graph", "block"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
                         ";", "|", "=", "+", "*", "/", "\\", // NOTE: No minus
@@ -64,8 +64,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       return ret(state, match[0], match[0], 'builtin');
     }
     if (match = stream.match(pyret_keywords, true)) {
-      if (match[0] == "if" && stream.peek() === ":")
-        return ret(state, 'if:', 'if:', 'keyword');
       if (match[0] == "data")
         state.dataNoPipeColon = true;
       return ret(state, match[0], match[0], 'keyword');
@@ -254,7 +252,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "data") {
       ls.deferedOpened.d++;
       ls.tokens.push("DATA", "WANTCOLON", "NEEDSOMETHING");
-    } else if (state.lastToken === "if:") {
+    } else if (state.lastToken === "ask:") {
       ls.deferedOpened.c++;
       ls.tokens.push("IFCOND");
     } else if (state.lastToken === "if") {
