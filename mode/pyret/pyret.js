@@ -252,7 +252,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "data") {
       ls.deferedOpened.d++;
       ls.tokens.push("DATA", "WANTCOLON", "NEEDSOMETHING");
-    } else if (state.lastToken === "ask:") {
+    } else if (state.lastToken === "ask") {
       ls.deferedOpened.c++;
       ls.tokens.push("IFCOND");
     } else if (state.lastToken === "if") {
@@ -302,7 +302,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
         ls.tokens.push("SHARED", "WANTCOLON");
       }
-    } else if (state.lastToken === "where") {
+    } else if (state.lastToken === "where" || state.lastToken === "examples") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop();
         // ls.curClosed.o++; 
