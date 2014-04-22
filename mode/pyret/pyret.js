@@ -8,9 +8,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_keywords = 
     wordRegexp(["fun", "method", "var", "when", "import", "provide", 
                 "data", "end", "except", "for", "from", 
-                "and", "or", "not", "as", "if", "else", "cases"]);
+                "and", "or", "not", "as", "if", "else", "cases",
+                "check", "examples"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "check", "examples", "graph", "block"]);
+    wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "graph", "block"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
                         ";", "|", "=", "+", "*", "/", "\\", // NOTE: No minus
@@ -302,7 +303,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
         ls.tokens.push("SHARED", "WANTCOLON");
       }
-    } else if (state.lastToken === "where" || state.lastToken === "examples") {
+    } else if (state.lastToken === "where" || (state.lastToken === "examples" && ls.tokens.length > 0)) {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop();
         // ls.curClosed.o++; 
@@ -316,7 +317,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       }
       ls.tokens.pop();
       ls.tokens.push("CHECK", "WANTCOLON");
-    } else if (state.lastToken === "check" || state.lastToken === "examples" && ls.tokens.length === 0) {
+    } else if (state.lastToken === "check" || (state.lastToken === "examples" && ls.tokens.length === 0)) {
       ls.deferedOpened.s++;
       ls.tokens.push("CHECK", "WANTCOLON");
     } else if (state.lastToken === "try") {
