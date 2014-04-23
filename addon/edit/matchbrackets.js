@@ -52,11 +52,20 @@
     var style = found.match ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket";
     var one = cm.markText(found.from, Pos(found.from.line, found.from.ch + 1), {className: style});
     var two = found.to && cm.markText(found.to, Pos(found.to.line, found.to.ch + 1), {className: style});
+    var three;
+    if (found.to) {
+      var from = found.from; var to = found.to;
+      if (to.line < from.line || to.ch < from.ch) {
+        from = found.to;
+        to = found.from;
+      }
+      three = cm.markText(from, Pos(to.line, to.ch + 1), {className: style + "-region"});
+    }
     // Kludge to work around the IE bug from issue #1193, where text
     // input stops going to the textare whever this fires.
     if (ie_lt8 && cm.state.focused) cm.display.input.focus();
     var clear = function() {
-      cm.operation(function() { one.clear(); two && two.clear(); });
+      cm.operation(function() { one.clear(); two && two.clear(); three && three.clear(); });
     };
     if (autoclear) setTimeout(clear, 800);
     else return clear;
