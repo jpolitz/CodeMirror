@@ -55,7 +55,7 @@
     var three;
     if (found.to) {
       var from = found.from; var to = found.to;
-      if (to.line < from.line || to.ch < from.ch) {
+      if (to.line < from.line || (to.line === from.line && to.ch < from.ch)) {
         from = found.to;
         to = found.from;
       }
