@@ -288,9 +288,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "with") {
       if (hasTop(ls.tokens, ["WANTOPENPAREN", "WANTCLOSEPAREN", "DATA"])) {
         ls.tokens.pop(); ls.tokens.pop();
-        ls.deferedOpened.o++;
         ls.tokens.push("OBJECT", "WANTCOLON");
-      }
+      } else if (hasTop(ls.tokens, ["DATA"])) {
+        ls.tokens.push("OBJECT", "WANTCOLON");
+      }        
     } else if (state.lastToken === "provide") {
       ls.tokens.push("PROVIDE");
     } else if (state.lastToken === "sharing") {
