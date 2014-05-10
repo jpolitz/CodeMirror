@@ -7,7 +7,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
   const pyret_keywords = 
     wordRegexp(["fun", "method", "var", "when", "import", "provide", 
-                "data", "end", "except", "for", "from", 
+                "data", "end", "except", "for", "from", "lazy",
                 "and", "or", "not", "as", "if", "else", "cases",
                 "check", "examples"]);
   const pyret_keywords_colon = 
