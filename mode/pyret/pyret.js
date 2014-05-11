@@ -8,7 +8,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_keywords = 
     wordRegexp(["fun", "method", "var", "when", "import", "provide", 
                 "data", "end", "except", "for", "from", "lazy",
-                "and", "or", "not", "as", "if", "else", "cases",
+                "and", "or", "as", "if", "else", "cases",
                 "check", "examples"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "graph", "block"]);
