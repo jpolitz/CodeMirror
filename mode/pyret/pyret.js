@@ -44,20 +44,47 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     if (stream.match(/^[0-9]+(\.[0-9]+)?/))
       return ret(state, 'number', stream.current(), 'number');
     
-    if (ch === '"') {
-      state.tokenizer = tokenStringDouble;
-      state.lastToken = '"';
-      stream.eat('"');
+    // if (ch === '"') {
+    //   state.tokenizer = tokenStringDouble;
+    //   state.lastToken = '"';
+    //   stream.eat('"');
+    //   return state.tokenizer(stream, state);
+    // }
+    // if (ch === "'") {
+    //   state.tokenizer = tokenStringSingle;
+    //   state.lastToken = "'";
+    //   stream.eat("'");
+    //   return state.tokenizer(stream, state);
+    // }
+    const dquot_str = 
+      new RegExp("^\"(?:" +
+                 "\\\\[01234567]{1,3}" +
+                 "|\\\\x[0-9a-fA-F]{1,2}" + 
+                 "|\\\\u[0-9a-fA-f]{1,4}" + 
+                 "|\\\\[\\\\nrt\"\']" + 
+                 "|[^\"\n\r])*\"");
+    const squot_str = 
+      new RegExp("^\'(?:" +
+                 "\\\\[01234567]{1,3}" +
+                 "|\\\\x[0-9a-fA-F]{1,2}" + 
+                 "|\\\\u[0-9a-fA-f]{1,4}" + 
+                 "|\\\\[\\\\nrt\"\']" + 
+                 "|[^\'\n\r])*\'");
+    const unterminated_string = new RegExp("^[\"\'].*");
+
+    var match;
+    if (match = stream.match(dquot_str, true)) {
+      return ret(state, 'string', match[0], 'string');
+    } else if (match = stream.match(squot_str, true)) {
+      return ret(state, 'string', match[0], 'string');
+    } else if (stream.match(/^```/, true)) {
+      state.tokenizer = tokenStringTriple;
+      state.lastToken = '```';
       return state.tokenizer(stream, state);
-    }
-    if (ch === "'") {
-      state.tokenizer = tokenStringSingle;
-      state.lastToken = "'";
-      stream.eat("'");
-      return state.tokenizer(stream, state);
+    } else if (match = stream.match(unterminated_string, true)) {
+      return ret(state, 'string', match[0], 'unterminated-string');
     }
     // Level 1
-    var match;
     if ((match = stream.match(pyret_double_punctuation, true)) || 
         (match = stream.match(pyret_single_punctuation, true))) {
       if (state.dataNoPipeColon && (match[0] == ":" || match[0] == "|"))
@@ -113,6 +140,23 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
   var tokenStringDouble = mkTokenString('"');
   var tokenStringSingle = mkTokenString("'");
+
+  function tokenStringTriple(stream, state) {
+    while (!stream.eol()) {
+      stream.match(/[^`\\]*/, true); //eatWhile(/[^`\\]|`{1,2}([^`\\]|(?:\\))/);
+      if (stream.eat('\\')) {
+        stream.next();
+        if (stream.eol()) {
+          return ret(state, 'string', stream.current(), 'string');
+        }
+      } else if (stream.match('```', true)) {
+        state.tokenizer = tokenBase;
+        return ret(state, 'string', stream.current(), 'string');
+      } else
+        stream.next();
+    }
+    return ret(state, 'string', stream.current(), 'string');
+  }
 
   // Parsing
 
