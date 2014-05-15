@@ -6,7 +6,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
   const pyret_keywords = 
-    wordRegexp(["fun", "method", "var", "when", "import", "provide", 
+    wordRegexp(["fun", "lam", "method", "var", "when", "import", "provide", 
                 "data", "end", "except", "for", "from", "lazy",
                 "and", "or", "as", "if", "else", "cases",
                 "check", "examples"]);
@@ -282,7 +282,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "var") {
       ls.deferedOpened.v++;
       ls.tokens.push("VAR", "NEEDSOMETHING", "WANTCOLONOREQUAL");
-    } else if (state.lastToken === "fun" || state.lastToken === "method") {
+    } else if (state.lastToken === "fun" || state.lastToken === "method" || state.lastToken === "lam") {
       ls.deferedOpened.fn++;
       ls.tokens.push("FUN", "WANTOPENPAREN");
     } else if (state.lastToken === "when") {
