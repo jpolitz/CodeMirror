@@ -8,14 +8,14 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_keywords = 
     wordRegexp(["fun", "lam", "method", "var", "when", "import", "provide", 
                 "data", "end", "except", "for", "from", "lazy",
-                "and", "or", "as", "if", "else", "cases",
+                "and", "or", "as", "if", "else", "cases", "is", "satisfies", "raises",
                 "check", "examples"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "graph", "block"]);
   const pyret_single_punctuation = 
-    new RegExp("^([" + ["\\:", "\\.", "<", ">", ",", "^", 
-                        ";", "|", "=", "+", "*", "/", "\\", // NOTE: No minus
-                        "\\(", "\\)", "{", "}", "\\[", "\\]"].join('') + "])");
+    new RegExp("^([" + [":", ".", "<", ">", ",", "^", 
+                        ";", "|", "=", "+", "*", "/", "\\\\", // NOTE: No minus
+                        "(", ")", "{", "}", "\\[", "\\]"].join('') + "])");
   const pyret_double_punctuation = 
     new RegExp("^((" + ["::", "==", ">=", "<=", "=>", "->", ":=", "<>"].join(")|(") + "))");
   const initial_operators = { "-": true, "+": true, "*": true, "/": true, "<": true, "<=": true,
@@ -120,8 +120,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
   function mkTokenString(singleOrDouble) {
     return function(stream, state) {
-      var insideRE = singleOrDouble === "'" ? /[^'\\]/ : /[^"\\]/;
-      var endRE = singleOrDouble === "'" ? /'/ : /"/;
+      var insideRE = singleOrDouble === "'" ? new RegExp("[^'\\]") : new RegExp('[^"\\]');
+      var endRE = singleOrDouble === "'" ? new RegExp("'") : new RegExp('"');
       while (!stream.eol()) {
         stream.eatWhile(insideRE);
         if (stream.eat('\\')) {
@@ -251,8 +251,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
       }
     }
-    if (firstTokenInLine && initial_operators[state.lastToken]) {
-    if (firstTokenInLine && initial_operators[state.lastToken] && stream.match(/^\s+/)) {
+    if (firstTokenInLine && initial_operators[state.lastToken] 
+        && (state.lastToken == "." || stream.match(/^\s+/))) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (state.lastToken === ":") {
@@ -602,8 +602,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     lineComment: "#",
 
-    electricChars: "de|]}+-/=<>.",
-    electricInput: new RegExp("[de\\|\\]\\}+-\\/=<>\\.]\\s$"),
+    electricInput: new RegExp("(?:[de.|\\]}+/=<>]|[-s]\\s)$"),
   };
   return external;
 });
