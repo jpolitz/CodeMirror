@@ -252,6 +252,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       }
     }
     if (firstTokenInLine && initial_operators[state.lastToken]) {
+    if (firstTokenInLine && initial_operators[state.lastToken] && stream.match(/^\s+/)) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (state.lastToken === ":") {
@@ -602,6 +603,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     lineComment: "#",
 
     electricChars: "de|]}+-/=<>.",
+    electricInput: new RegExp("[de\\|\\]\\}+-\\/=<>\\.]\\s$"),
   };
   return external;
 });
