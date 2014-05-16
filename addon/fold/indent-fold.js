@@ -1,29 +1,44 @@
+// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// Distributed under an MIT license: http://codemirror.net/LICENSE
+
+(function(mod) {
+  if (typeof exports == "object" && typeof module == "object") // CommonJS
+    mod(require("../../lib/codemirror"));
+  else if (typeof define == "function" && define.amd) // AMD
+    define(["../../lib/codemirror"], mod);
+  else // Plain browser env
+    mod(CodeMirror);
+})(function(CodeMirror) {
+"use strict";
+
 CodeMirror.registerHelper("fold", "indent", function(cm, start) {
   var tabSize = cm.getOption("tabSize"), firstLine = cm.getLine(start.line);
-  var myIndent = CodeMirror.countColumn(firstLine, null, tabSize);
-
-  if (! (/\S/.test(cm.getLine(start.line)))) { return; }
-
-  for (var i = start.line + 1, end = cm.lineCount(); i < end; i ++) {
+  if (!/\S/.test(firstLine)) return;
+  var getIndent = function(line) {
+    return CodeMirror.countColumn(line, null, tabSize);
+  };
+  var myIndent = getIndent(firstLine);
+  var lastLineInFold = null;
+  // Go through lines until we find a line that definitely doesn't belong in
+  // the block we're folding, or to the end.
+  for (var i = start.line + 1, end = cm.lastLine(); i <= end; ++i) {
     var curLine = cm.getLine(i);
-    if (CodeMirror.countColumn(curLine, null, tabSize) > myIndent) {
+    var curIndent = getIndent(curLine);
+    if (curIndent > myIndent) {
+      // Lines with a greater indent are considered part of the block.
+      lastLineInFold = i;
+    } else if (!/\S/.test(curLine)) {
+      // Empty lines might be breaks within the block we're trying to fold.
+    } else {
+      // A non-empty line at an indent equal to or less than ours marks the
+      // start of another block.
       break;
     }
-    if (!(/\S/.test(curLine))) {
-      continue;
-    }
-    return;
   }
-  for (var i = start.line + 1, end = cm.lineCount(); i < end; ++i) {
-    var curLine = cm.getLine(i);
-    if (CodeMirror.countColumn(curLine, null, tabSize) > myIndent) {
-      foundIndentedLine = true;
-    }
-    if (CodeMirror.countColumn(curLine, null, tabSize) <= myIndent &&
-        CodeMirror.countColumn(cm.getLine(i-1), null, tabSize) > myIndent &&
-        /\S/.test(curLine))
-      return {from: CodeMirror.Pos(start.line, firstLine.length),
-              to: CodeMirror.Pos(i - 1, cm.getLine(i - 1).length)};
-  }
+  if (lastLineInFold) return {
+    from: CodeMirror.Pos(start.line, firstLine.length),
+    to: CodeMirror.Pos(lastLineInFold, cm.getLine(lastLineInFold).length)
+  };
 });
-CodeMirror.indentRangeFinder = CodeMirror.fold.indent; // deprecated
+
+});
