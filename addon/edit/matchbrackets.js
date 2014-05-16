@@ -71,15 +71,15 @@
     for (var i = 0; i < ranges.length; i++) {
       var match = ranges[i].empty() && findMatchingBracket(cm, ranges[i].head, false, config);
       if (match && cm.getLine(match.from.line).length <= maxHighlightLen) {
-        var style = found.match ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket";
-        marks.push(cm.markText(found.from, Pos(found.from.line, found.from.ch + 1), {className: style}));
+        var style = match.match ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket";
+        marks.push(cm.markText(match.from, Pos(match.from.line, match.from.ch + 1), {className: style}));
         if (match.to && cm.getLine(match.to.line).length <= maxHighlightLen)
           marks.push(cm.markText(match.to, Pos(match.to.line, match.to.ch + 1), {className: style}));
-        if (found.to) {
-          var from = found.from; var to = found.to;
+        if (match.to) {
+          var from = match.from; var to = match.to;
           if (to.line < from.line || (to.line === from.line && to.ch < from.ch)) {
-            from = found.to;
-            to = found.from;
+            from = match.to;
+            to = match.from;
           }
           marks.push(cm.markText(from, Pos(to.line, to.ch + 1), {className: style + "-region"}));
         }
