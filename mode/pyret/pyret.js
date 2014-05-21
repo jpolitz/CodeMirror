@@ -319,7 +319,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       }
     } else if (state.lastToken === "|") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"]) || hasTop(ls.tokens, ["FIELD", "OBJECT", "DATA"])) {
-        ls.curClosed.o++;
+        //ls.curClosed.o++;
         if (hasTop(ls.tokens, "FIELD")) {
           ls.tokens.pop();
           if (ls.curOpened.f > 0) ls.curOpened.f--;
@@ -343,7 +343,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       ls.curClosed.d++; ls.deferedOpened.s++;
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop(); ls.tokens.pop();
-        ls.curClosed.o++;
+        //ls.curClosed.o++;
         ls.tokens.push("SHARED", "WANTCOLON");
       } else if (hasTop(ls.tokens, "DATA")) {
         ls.tokens.pop();
@@ -542,8 +542,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var indentUnit = config.indentUnit;
     var taSS = new CodeMirror.StringStream(textAfter, config.tabSize);
     var sol = true;
-    // console.log("***** In indent, before processing textAfter (" + textAfter + ")");
-    // state.lineState.print();
+    console.log("***** In indent, before processing textAfter (" + textAfter + ")");
+    state.lineState.print();
     state = copyState(state);
     if (/^\s*$/.test(textAfter)) {
       state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
@@ -556,8 +556,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         }
       }
     }
-    // console.log("***** In indent, after processing textAfter (" + textAfter + ")");
-    // state.lineState.print();
+    console.log("***** In indent, after processing textAfter (" + textAfter + ")");
+    state.lineState.print();
     var indentSpec = state.lineState.nestingsAtLineStart;
     var indent = 0;
     for (var key in INDENTATION) {
@@ -604,7 +604,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     lineComment: "#",
 
-    electricInput: new RegExp("(?:[de.\\]}|]|[-s\\*\\+/=<>^]\\s)$"),
+    electricInput: new RegExp("(?:[de.\\]}|:]|[-s\\*\\+/=<>^]\\s)$"),
   };
   return external;
 });
