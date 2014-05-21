@@ -419,12 +419,14 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
       } else if (hasTop(ls.tokens, "OBJECT") || hasTop(ls.tokens, "SHARED")) {
         ls.tokens.push("FUN");
-        ls.deferedOpened.f++;
+        ls.deferedOpened.fn++;
       } else {
         ls.tokens.push("WANTCLOSEPAREN");
       }
     } else if (state.lastToken === ")") {
-      ls.deferedClosed.p++;
+      if (ls.curOpened.p > 0) { ls.curOpened.p--; }
+      else if (ls.deferedOpened.p > 0) { ls.deferedOpened.p--; }
+      else {ls.deferedClosed.p++; }
       if (hasTop(ls.tokens, "WANTCLOSEPAREN"))
         ls.tokens.pop();
       while (hasTop(ls.tokens, "VAR")) {
@@ -433,7 +435,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       }
     } else if (state.lastToken === "end" || state.lastToken === ";") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
-        ls.curClosed.o++;
+        //ls.curClosed.o++;
         ls.tokens.pop();
       }
       var top = peek(ls.tokens);
