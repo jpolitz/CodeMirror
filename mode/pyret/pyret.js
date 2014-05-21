@@ -542,8 +542,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var indentUnit = config.indentUnit;
     var taSS = new CodeMirror.StringStream(textAfter, config.tabSize);
     var sol = true;
-    console.log("***** In indent, before processing textAfter (" + textAfter + ")");
-    state.lineState.print();
+    // console.log("***** In indent, before processing textAfter (" + textAfter + ")");
+    // state.lineState.print();
     state = copyState(state);
     if (/^\s*$/.test(textAfter)) {
       state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
@@ -556,8 +556,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         }
       }
     }
-    console.log("***** In indent, after processing textAfter (" + textAfter + ")");
-    state.lineState.print();
+    // console.log("***** In indent, after processing textAfter (" + textAfter + ")");
+    // state.lineState.print();
     var indentSpec = state.lineState.nestingsAtLineStart;
     var indent = 0;
     for (var key in INDENTATION) {
