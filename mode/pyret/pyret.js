@@ -6,10 +6,12 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
   const pyret_keywords = 
-    wordRegexp(["fun", "lam", "method", "var", "when", "import", "provide", 
+    wordRegexp(["fun", "lam", "method", "var", "when", "import", "provide", "type", "newtype",
                 "data", "end", "for", "from", "lazy",
                 "and", "or", "as", "if", "else", "cases", "is", "satisfies", "raises",
                 "check", "examples"]);
+  const pyret_keywords_hyphen =
+    wordRegexp(["provide-types", "type-let"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "graph", "block"]);
   const pyret_single_punctuation = 
@@ -90,6 +92,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (state.dataNoPipeColon && (match[0] == ":" || match[0] == "|"))
         state.dataNoPipeColon = false;
       return ret(state, match[0], match[0], 'builtin');
+    }
+    if (match = stream.match(pyret_keywords_hyphen, true)) {
+      return ret(state, match[0], match[0], 'keyword');
     }
     if (match = stream.match(pyret_keywords, true)) {
       if (match[0] == "data")
