@@ -8,20 +8,23 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_keywords = 
     wordRegexp(["fun", "lam", "method", "var", "when", "import", "provide", "type", "newtype",
                 "data", "end", "for", "from", "lazy",
+                "shadow", "ref",
                 "and", "or", "as", "if", "else", "cases", "is", "satisfies", "raises",
+                "raises-satisfies", "violates", "raises-violates",
                 "check", "examples"]);
   const pyret_keywords_hyphen =
     wordRegexp(["provide-types", "type-let"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "graph", "block"]);
+    wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "ref-graph", "block"]);
   const pyret_single_punctuation = 
     new RegExp("^([" + [":", ".", "<", ">", ",", "^", 
                         ";", "|", "=", "+", "*", "/", "\\\\", // NOTE: No minus
                         "(", ")", "{", "}", "\\[", "\\]"].join('') + "])");
   const pyret_double_punctuation = 
-    new RegExp("^((" + ["::", "==", ">=", "<=", "=>", "->", ":=", "<>"].join(")|(") + "))");
+    new RegExp("^((" + ["<=>", "::", "=~", "==", ">=", "<=", "=>", "->", ":=", "<>"].join(")|(") + "))");
   const initial_operators = { "-": true, "+": true, "*": true, "/": true, "<": true, "<=": true,
                               ">": true, ">=": true, "==": true, "<>": true, ".": true, "^": true,
+                              "<=>": true, "=~": true,
                               "is": true, "raises": true, "satisfies": true }
   
   
@@ -385,7 +388,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "block") {
       ls.deferedOpened.fn++;
       ls.tokens.push("BLOCK", "WANTCOLON");
-    } else if (state.lastToken === "graph") {
+    } else if (state.lastToken === "ref-graph") {
       ls.deferedOpened.g++;
       ls.tokens.push("GRAPH", "WANTCOLON");
     } else if (state.lastToken === "[") {
