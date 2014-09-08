@@ -11,6 +11,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "shadow", "ref",
                 "and", "or", "as", "if", "else", "cases", "is", "satisfies", "raises",
                 "raises-satisfies", "violates", "raises-violates",
+                "does-not-raise", "raises-other-than",
                 "check", "examples"]);
   const pyret_keywords_hyphen =
     wordRegexp(["provide-types", "type-let"]);
