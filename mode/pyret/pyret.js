@@ -18,7 +18,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "ref-graph", "block"]);
   const pyret_single_punctuation = 
-    new RegExp("^([" + [":", ".", "<", ">", ",", "^", 
+    new RegExp("^([" + [":", ".", "<", ">", ",", "^", "!",
                         ";", "|", "=", "+", "*", "/", "\\\\", // NOTE: No minus
                         "(", ")", "{", "}", "\\[", "\\]"].join('') + "])");
   const pyret_double_punctuation = 
