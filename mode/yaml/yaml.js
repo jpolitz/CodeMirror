@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -80,7 +80,7 @@ CodeMirror.defineMode("yaml", function() {
       }
 
       /* pairs (associative arrays) -> key */
-      if (!state.pair && stream.match(/^\s*\S+(?=\s*:($|\s))/i)) {
+      if (!state.pair && stream.match(/^\s*(?:[,\[\]{}&*!|>'"%@`][^\s'":]|[^,\[\]{}#&*!|>'"%@`])[^#]*?(?=\s*:($|\s))/)) {
         state.pair = true;
         state.keyCol = stream.indentation();
         return "atom";

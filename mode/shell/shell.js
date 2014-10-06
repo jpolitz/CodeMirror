@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -128,7 +128,8 @@ CodeMirror.defineMode('shell', function() {
     startState: function() {return {tokens:[]};},
     token: function(stream, state) {
       return tokenize(stream, state);
-    }
+    },
+    lineComment: '#'
   };
 });
 

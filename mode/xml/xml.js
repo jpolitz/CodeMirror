@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -21,7 +21,7 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
     autoSelfClosers: {'area': true, 'base': true, 'br': true, 'col': true, 'command': true,
                       'embed': true, 'frame': true, 'hr': true, 'img': true, 'input': true,
                       'keygen': true, 'link': true, 'meta': true, 'param': true, 'source': true,
-                      'track': true, 'wbr': true},
+                      'track': true, 'wbr': true, 'menuitem': true},
     implicitlyClosed: {'dd': true, 'li': true, 'optgroup': true, 'option': true, 'p': true,
                        'rp': true, 'rt': true, 'tbody': true, 'td': true, 'tfoot': true,
                        'th': true, 'tr': true},

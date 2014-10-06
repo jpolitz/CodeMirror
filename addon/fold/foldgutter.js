@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -58,7 +58,7 @@
   function marker(spec) {
     if (typeof spec == "string") {
       var elt = document.createElement("div");
-      elt.className = spec;
+      elt.className = spec + " CodeMirror-guttermarker-subtle";
       return elt;
     } else {
       return spec.cloneNode(true);

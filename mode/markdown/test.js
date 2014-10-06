@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function() {
@@ -54,7 +54,7 @@
      "[link&formatting&formatting-link <][link user@example.com][link&formatting&formatting-link >]");
 
   FT("formatting_escape",
-     "[formatting&formatting-escape \\]*");
+     "[formatting-escape \\*]");
 
   MT("plainText",
      "foo");

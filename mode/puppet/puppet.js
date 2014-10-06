@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -176,7 +176,7 @@ CodeMirror.defineMode("puppet", function () {
     // Match characters that we are going to assume
     // are trying to be regex
     if (ch == '/') {
-      stream.match(/.*\//);
+      stream.match(/.*?\//);
       return 'variable-3';
     }
     // Match all the numbers

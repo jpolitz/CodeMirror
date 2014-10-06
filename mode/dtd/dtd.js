@@ -1,10 +1,10 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 /*
   DTD mode
   Ported to CodeMirror by Peter Kroon <plakroon@gmail.com>
-  Report bugs/issues here: https://github.com/marijnh/CodeMirror/issues
+  Report bugs/issues here: https://github.com/codemirror/CodeMirror/issues
   GitHub: @peterkroon
 */
 

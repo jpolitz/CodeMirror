@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -15,12 +15,12 @@
     return new RegExp("^((" + words.join(")|(") + "))\\b");
   }
 
-  var wordOperators = wordRegexp(["and", "or", "not", "is", "in"]);
+  var wordOperators = wordRegexp(["and", "or", "not", "is"]);
   var commonKeywords = ["as", "assert", "break", "class", "continue",
                         "def", "del", "elif", "else", "except", "finally",
                         "for", "from", "global", "if", "import",
                         "lambda", "pass", "raise", "return",
-                        "try", "while", "with", "yield"];
+                        "try", "while", "with", "yield", "in"];
   var commonBuiltins = ["abs", "all", "any", "bin", "bool", "bytearray", "callable", "chr",
                         "classmethod", "compile", "complex", "delattr", "dict", "dir", "divmod",
                         "enumerate", "eval", "filter", "float", "format", "frozenset",
@@ -54,7 +54,7 @@
     var doubleDelimiters = parserConf.doubleDelimiters || new RegExp("^((\\+=)|(\\-=)|(\\*=)|(%=)|(/=)|(&=)|(\\|=)|(\\^=))");
     var tripleDelimiters = parserConf.tripleDelimiters || new RegExp("^((//=)|(>>=)|(<<=)|(\\*\\*=))");
     var identifiers = parserConf.identifiers|| new RegExp("^[_A-Za-z][_A-Za-z0-9]*");
-    var hangingIndent = parserConf.hangingIndent || parserConf.indentUnit;
+    var hangingIndent = parserConf.hangingIndent || conf.indentUnit;
 
     var myKeywords = commonKeywords, myBuiltins = commonBuiltins;
     if(parserConf.extra_keywords != undefined){
@@ -84,13 +84,20 @@
           var lineOffset = stream.indentation();
           if (lineOffset > scopeOffset)
             pushScope(stream, state, "py");
-          else if (lineOffset < scopeOffset)
-            return dedent(stream, state) ? ERRORCLASS : null;
+          else if (lineOffset < scopeOffset && dedent(stream, state))
+            state.errorToken = true;
           return null;
-        } else if (scopeOffset > 0 && dedent(stream, state)) {
-          return state.tokenize(stream, state) + " " + ERRORCLASS;
+        } else {
+          var style = tokenBaseInner(stream, state);
+          if (scopeOffset > 0 && dedent(stream, state))
+            style += " " + ERRORCLASS;
+          return style;
         }
       }
+      return tokenBaseInner(stream, state);
+    }
+
+    function tokenBaseInner(stream, state) {
       if (stream.eatSpace()) return null;
 
       var ch = stream.peek();
@@ -226,7 +233,7 @@
         if (top(state).type != "py") return true;
         state.scopes.pop();
       }
-      return top(state).offset == indented;
+      return top(state).offset != indented;
     }
 
     function tokenLexer(stream, state) {
@@ -260,7 +267,7 @@
       if (current == ":" && !state.lambda && top(state).type == "py")
         pushScope(stream, state, "py");
 
-      var delimiter_index = "[({".indexOf(current);
+      var delimiter_index = current.length == 1 ? "[({".indexOf(current) : -1;
       if (delimiter_index != -1)
         pushScope(stream, state, "])}".slice(delimiter_index, delimiter_index+1));
 
@@ -290,6 +297,8 @@
       },
 
       token: function(stream, state) {
+        var addErr = state.errorToken;
+        if (addErr) state.errorToken = false;
         var style = tokenLexer(stream, state);
 
         state.lastStyle = style;
@@ -300,7 +309,7 @@
 
         if (stream.eol() && state.lambda)
           state.lambda = false;
-        return style;
+        return addErr ? style + " " + ERRORCLASS : style;
       },
 
       indent: function(state, textAfter) {
@@ -311,8 +320,10 @@
         var closing = textAfter && textAfter.charAt(0) == scope.type;
         if (scope.align != null)
           return scope.align - (closing ? 1 : 0);
+        else if (closing && state.scopes.length > 1)
+          return state.scopes[state.scopes.length - 2].offset;
         else
-          return scope.offset - (closing ? conf.indentUnit : 0);
+          return scope.offset;
       },
 
       lineComment: "#",

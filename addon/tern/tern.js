@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 // Glue code between CodeMirror and Tern.
@@ -106,7 +106,7 @@
       cm.showHint({hint: this.getHint});
     },
 
-    showType: function(cm, pos) { showType(this, cm, pos); },
+    showType: function(cm, pos, c) { showType(this, cm, pos, c); },
 
     updateArgHints: function(cm) { updateArgHints(this, cm); },
 
@@ -239,7 +239,7 @@
 
   // Type queries
 
-  function showType(ts, cm, pos) {
+  function showType(ts, cm, pos, c) {
     ts.request(cm, "type", function(error, data) {
       if (error) return showError(ts, cm, error);
       if (ts.options.typeTip) {
@@ -254,6 +254,7 @@
         }
       }
       tempTooltip(cm, tip);
+      if (c) c();
     }, pos);
   }
 
@@ -390,7 +391,7 @@
   }
 
   function moveTo(ts, curDoc, doc, start, end) {
-    doc.doc.setSelection(end, start);
+    doc.doc.setSelection(start, end);
     if (curDoc != doc && ts.options.switchToDoc) {
       closeArgHints(ts);
       ts.options.switchToDoc(doc.name, doc.doc);

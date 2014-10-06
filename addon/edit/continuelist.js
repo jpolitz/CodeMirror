@@ -1,4 +1,4 @@
-// CodeMirror 4.1.1, copyright (c) by Marijn Haverbeke and others
+// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -11,7 +11,7 @@
 })(function(CodeMirror) {
   "use strict";
 
-  var listRE = /^(\s*)([*+-]|(\d+)\.)(\s*)/,
+  var listRE = /^(\s*)([*+-]|(\d+)\.)(\s+)/,
       unorderedBullets = "*+-";
 
   CodeMirror.commands.newlineAndIndentContinueMarkdownList = function(cm) {
