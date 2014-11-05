@@ -289,7 +289,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.deferedOpened.v++;
         ls.tokens.push("VAR", "NEEDSOMETHING");
       }
-    } else if (state.lastToken === "var") {
+    } else if (state.lastToken === "var" || state.lastToken === "rec") {
       ls.deferedOpened.v++;
       ls.tokens.push("VAR", "NEEDSOMETHING", "WANTCOLONOREQUAL");
     } else if (state.lastToken === "fun" || state.lastToken === "method" || state.lastToken === "lam") {
