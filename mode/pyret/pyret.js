@@ -8,13 +8,13 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_keywords = 
     wordRegexp(["fun", "lam", "method", "var", "rec", "when", "import", "provide", "type", "newtype",
                 "data", "end", "for", "from", "lazy",
-                "shadow", "ref",
+                "shadow", "ref", "let", "letrec",
                 "and", "or", "as", "if", "else", "cases", "is", "satisfies", "raises",
-                "raises-satisfies", "violates", "raises-violates",
-                "does-not-raise", "raises-other-than",
+                "violates", 
                 "check", "examples"]);
   const pyret_keywords_hyphen =
-    wordRegexp(["provide-types", "type-let"]);
+    wordRegexp(["provide-types", "type-let", "does-not-raise", "raises-violates", 
+                "raises-satisfies", "raises-other-than", "is-not"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "ref-graph", "block"]);
   const pyret_single_punctuation = 
@@ -289,12 +289,15 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.deferedOpened.v++;
         ls.tokens.push("VAR", "NEEDSOMETHING");
       }
-    } else if (state.lastToken === "var") {
+    } else if (state.lastToken === "var" || state.lastToken === "rec") {
       ls.deferedOpened.v++;
       ls.tokens.push("VAR", "NEEDSOMETHING", "WANTCOLONOREQUAL");
     } else if (state.lastToken === "fun" || state.lastToken === "method" || state.lastToken === "lam") {
       ls.deferedOpened.fn++;
       ls.tokens.push("FUN", "WANTOPENPAREN");
+    } else if (state.lastToken === "let" || state.lastToken === "letrec") {
+      ls.deferedOpened.fn++;
+      ls.tokens.push("LET", "WANTCOLON");
     } else if (state.lastToken === "when") {
       ls.deferedOpened.fn++; // when indents like functions
       ls.tokens.push("WHEN", "WANTCOLON");
@@ -479,7 +482,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
           else which_to_close.v++;
         } 
         // Things that are counted, and closable by end:
-        else if (top === "FUN" || top === "WHEN" || top === "FOR" || top === "IF" || top === "BLOCK") {
+        else if (top === "FUN" || top === "WHEN" || top === "FOR" || top === "IF" || top === "BLOCK" || top === "LET") {
           if (ls.curOpened.fn > 0) ls.curOpened.fn--;
           else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
           else which_to_close.fn++;
