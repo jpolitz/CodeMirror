@@ -260,8 +260,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.tokens.pop();
       }
     }
-    if (firstTokenInLine && initial_operators[state.lastToken] 
-        && (state.lastToken == "." || stream.match(/^\s+/))) {
+    if (firstTokenInLine && 
+        ((initial_operators[state.lastToken] && (state.lastToken == "." || stream.match(/^\s+/)))
+         || (state.lastToken === "is" && stream.match(/^%/)))) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (state.lastToken === ":") {
@@ -616,7 +617,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     lineComment: "#",
 
-    electricInput: new RegExp("(?:[de.\\]}|:]|[-s\\*\\+/=<>^]\\s)$"),
+    electricInput: new RegExp("(?:[de.\\]}|:]|[-s\\*\\+/=<>^]\\s|is%)$"),
   };
   return external;
 });
