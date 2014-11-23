@@ -9,12 +9,12 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     wordRegexp(["fun", "lam", "method", "var", "rec", "when", "import", "provide", "type", "newtype",
                 "data", "end", "for", "from", "lazy",
                 "shadow", "ref", "let", "letrec",
-                "and", "or", "as", "if", "else", "cases", "is", "satisfies", "raises",
+                "and", "or", "as", "if", "else", "cases", "is==", "is=~", "is<=>", "is", "satisfies", "raises",
                 "violates", 
                 "check", "examples"]);
   const pyret_keywords_hyphen =
     wordRegexp(["provide-types", "type-let", "does-not-raise", "raises-violates", 
-                "raises-satisfies", "raises-other-than", "is-not"]);
+                "raises-satisfies", "raises-other-than", "is-not==", "is-not=~", "is-not<=>", "is-not"]);
   const pyret_keywords_colon = 
     wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "ref-graph", "block"]);
   const pyret_single_punctuation = 
@@ -26,7 +26,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const initial_operators = { "-": true, "+": true, "*": true, "/": true, "<": true, "<=": true,
                               ">": true, ">=": true, "==": true, "<>": true, ".": true, "^": true,
                               "<=>": true, "=~": true,
-                              "is": true, "raises": true, "satisfies": true }
+                              "is": true, "is==": true, "is=~": true, "is<=>": true,
+                              "is-not": true, "is-not==": true, "is-not=~": true, "is-not<=>": true,
+                              "satisfies": true, "violates": true, "raises": true, "raises-other-than": true,
+                              "does-not-raise": true, "raises-satisfies": true, "raises-violates": true
+                            }
   
   
   function ret(state, tokType, content, style) {
@@ -262,7 +266,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     }
     if (firstTokenInLine && 
         ((initial_operators[state.lastToken] && (state.lastToken == "." || stream.match(/^\s+/)))
-         || (state.lastToken === "is" && stream.match(/^%/)))) {
+         || (state.lastToken === "is" && stream.match(/^%/))
+         || (state.lastToken === "is-not" && stream.match(/^%/)))) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (state.lastToken === ":") {
@@ -617,7 +622,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     lineComment: "#",
 
-    electricInput: new RegExp("(?:[de.\\]}|:]|[-s\\*\\+/=<>^]\\s|is%)$"),
+    electricInput: new RegExp("(?:[de.\\]}|:]|[-enst\\*\\+/=<>^~]\\s|is%|is-not%)$"),
   };
   return external;
 });
