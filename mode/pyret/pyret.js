@@ -38,6 +38,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     return style;
   }
 
+
   function tokenBase(stream, state) { 
     if (stream.eatSpace())
       return "IGNORED-SPACE";
@@ -45,7 +46,13 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var ch = stream.peek();
     
 
+    var commentMatch = stream.match(/^#\|/, true);
     // Handle Comments
+    if (commentMatch) {
+      state.tokenizer = tokenBlockComment;
+      state.lastToken = '#|';
+      return state.tokenizer(stream, state);
+    }
     if (ch === '#') {
       stream.skipToEnd();
       return ret(state, "COMMENT", state.lastContent, 'comment');
@@ -149,6 +156,20 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       }
       return ret(state, 'string', stream.current(), 'string');
     };
+  }
+
+  function tokenBlockComment(stream, state) {
+    while (!stream.eol()) {
+      stream.match(/[^\|]|\|[^#]/, true);
+      if(stream.match('|#', true)) {
+        state.tokenizer = tokenBase;
+        return ret(state, 'COMMENT', stream.current(), 'comment');
+      }
+      else {
+        stream.next();
+      }
+    }
+    return ret(state, 'COMMENT', stream.current(), 'comment');
   }
 
   var tokenStringDouble = mkTokenString('"');
