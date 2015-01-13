@@ -160,7 +160,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
   function tokenBlockComment(stream, state) {
     while (!stream.eol()) {
-      stream.match(/[^\|]|\|[^#]/, true);
       if(stream.match('|#', true)) {
         state.tokenizer = tokenBase;
         return ret(state, 'COMMENT', stream.current(), 'comment');
