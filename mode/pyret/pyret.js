@@ -38,7 +38,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     return style;
   }
 
-
   function tokenBase(stream, state) { 
     if (stream.eatSpace())
       return "IGNORED-SPACE";
@@ -46,16 +45,16 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var ch = stream.peek();
     
 
-    var commentMatch = stream.match(/^#\|/, true);
     // Handle Comments
-    if (commentMatch) {
-      state.tokenizer = tokenBlockComment;
-      state.lastToken = '#|';
-      return state.tokenizer(stream, state);
-    }
     if (ch === '#') {
-      stream.skipToEnd();
-      return ret(state, "COMMENT", state.lastContent, 'comment');
+      if (stream.match("#|", true)) { 
+        state.tokenizer = tokenizeBlockComment;
+        state.commentNestingDepth = 1;
+        return state.tokenizer(stream, state);
+      } else {
+        stream.skipToEnd();
+        return ret(state, "COMMENT", state.lastContent, 'comment');
+      }
     }
     // Handle Number Literals
     if (stream.match(/^[0-9]+(\.[0-9]+)?/))
@@ -138,6 +137,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     stream.next();
     return null;
   }
+
   function mkTokenString(singleOrDouble) {
     return function(stream, state) {
       var insideRE = singleOrDouble === "'" ? new RegExp("[^'\\]") : new RegExp('[^"\\]');
@@ -158,17 +158,26 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     };
   }
 
-  function tokenBlockComment(stream, state) {
-    while (!stream.eol()) {
-      if(stream.match('|#', true)) {
-        state.tokenizer = tokenBase;
-        return ret(state, 'COMMENT', stream.current(), 'comment');
-      }
-      else {
-        stream.next();
+  function tokenizeBlockComment(stream, state) {
+    var ch; //, comment; // uncomment this to debug the comment text
+    while (state.commentNestingDepth > 0 && (ch = stream.peek())) {
+      if (ch === "\\") { 
+        stream.next(); stream.next(); // eat the next two characters
+        // comment += stream.next() || ""; 
+        // comment += stream.next() || ""; 
+      } else if (stream.match("#|", true)) {
+        state.commentNestingDepth++;
+        // comment += "#|";
+      } else if (stream.match("|#", true)) {
+        state.commentNestingDepth--;
+        // comment += "|#";
+      } else {
+        stream.next(); // eat the next character
+        // comment += stream.next() || "";
       }
     }
-    return ret(state, 'COMMENT', stream.current(), 'comment');
+    if (state.commentNestingDepth === 0) state.tokenizer = tokenBase;
+    return ret(state, "COMMENT", state.lastContent, 'comment');
   }
 
   var tokenStringDouble = mkTokenString('"');
@@ -573,6 +582,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   function copyState(oldState) {
     return { tokenizer: oldState.tokenizer, lineState: oldState.lineState.copy(),
              lastToken: oldState.lastToken, lastContent: oldState.lastContent,
+             commentNestingDepth: oldState.commentNestingDepth,
              dataNoPipeColon: oldState.dataNoPipeColon }
   }
   
@@ -639,8 +649,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     },
 
     indent: indent,
-
-    lineComment: "#",
 
     electricInput: new RegExp("(?:[de.\\]}|:]|[-enst\\*\\+/=<>^~]\\s|is%|is-not%)$"),
   };
