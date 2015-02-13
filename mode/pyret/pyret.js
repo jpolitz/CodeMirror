@@ -50,7 +50,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (stream.match("#|", true)) { 
         state.tokenizer = tokenizeBlockComment;
         state.commentNestingDepth = 1;
-        return state.tokenizer(stream, state);
+        return ret(state, "COMMENT-START", state.lastContent, 'comment');
       } else {
         stream.skipToEnd();
         return ret(state, "COMMENT", state.lastContent, 'comment');
@@ -161,11 +161,17 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   function tokenizeBlockComment(stream, state) {
     var prev, next; 
     while (state.commentNestingDepth > 0 && (next = stream.next()) != null) {
-      if (prev === '#' && next === '|') state.commentNestingDepth++;
-      if (prev === '|' && next === '#') state.commentNestingDepth--;
+      if (prev === '#' && next === '|') { 
+        state.commentNestingDepth++; 
+        return ret(state, "COMMENT-START", state.lastContent, 'comment');
+      }
+      if (prev === '|' && next === '#') {
+        state.commentNestingDepth--;
+        if (state.commentNestingDepth === 0) state.tokenizer = tokenBase;
+        return ret(state, "COMMENT-END", state.lastContent, 'comment');
+      }
       prev = next;
     }
-    if (state.commentNestingDepth === 0) state.tokenizer = tokenBase;
     return ret(state, "COMMENT", state.lastContent, 'comment');
   }
 
@@ -277,19 +283,33 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
   function parse(firstTokenInLine, state, stream, style) {
     ls = state.lineState;
-    if (firstTokenInLine)
+    if (firstTokenInLine) {
       ls.nestingsAtLineStart = ls.nestingsAtLineEnd.copy();
-    if (hasTop(ls.tokens, "NEEDSOMETHING") && state.lastToken !== "COMMENT") {
+    }
+    if (ls.nestingsAtLineStart.comments > 0 || ls.curOpened.comments > 0 || ls.deferedOpened.comments > 0) {
+      if (state.lastToken === "COMMENT-END") {
+        if (ls.curOpened.comments > 0) ls.curOpened.comments--;
+        else if (ls.deferedOpened.comments > 0) ls.deferedOpened.comments--;
+        else if (firstTokenInLine) ls.curClosed.comments++;
+        else ls.deferedClosed.comments++;
+      } else if (state.lastToken === "COMMENT-START") {
+        ls.deferedOpened.comments++;
+      }
+    } else if (state.lastToken === "COMMENT-START") {
+      ls.deferedOpened.comments++;
+    } else if (state.lastToken === "COMMENT") {
+      // nothing to do
+    } else if (hasTop(ls.tokens, "NEEDSOMETHING")) {
       ls.tokens.pop();
       if (hasTop(ls.tokens, "VAR") && ls.deferedOpened.v > 0) {
         ls.deferedOpened.v--;
         ls.tokens.pop();
       }
-    }
-    if (firstTokenInLine && 
-        ((initial_operators[state.lastToken] && (state.lastToken == "." || stream.match(/^\s+/)))
-         || (state.lastToken === "is" && stream.match(/^%/))
-         || (state.lastToken === "is-not" && stream.match(/^%/)))) {
+      parse(firstTokenInLine, state, stream, style); // keep going; haven't processed token yet
+    } else if (firstTokenInLine && 
+               ((initial_operators[state.lastToken] && (state.lastToken == "." || stream.match(/^\s+/)))
+                || (state.lastToken === "is" && stream.match(/^%/))
+                || (state.lastToken === "is-not" && stream.match(/^%/)))) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (state.lastToken === ":") {
@@ -579,7 +599,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
              dataNoPipeColon: oldState.dataNoPipeColon }
   }
   
-  function indent(state, textAfter) {
+  function indent(state, textAfter, fullLine) {
     var indentUnit = config.indentUnit;
     var taSS = new CodeMirror.StringStream(textAfter, config.tabSize);
     var sol = true;
@@ -588,7 +608,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     state = copyState(state);
     if (state.commentNestingDepth > 0) {
       state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
-      return CodeMirror.Pass;
     }
     if (/^\s*$/.test(textAfter)) {
       state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
@@ -610,10 +629,16 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (INDENTATION.hasOwnProperty(key))
         indent += (indentSpec[key] || 0) * INDENTATION[key];
     }
-    if (/^\s*\|/.test(textAfter))
+    if (indentSpec.comments > 0) {
+      var spaces = fullLine.match(/\s*/)[0].length;
+      if (spaces > 0)       
+        return spaces;
+      else return indent * indentUnit;
+    } else if (/^\s*\|\\([^#]\\|$\\)/.test(textAfter)) {
       return (indent - 1) * indentUnit;
-    else
+    } else {
       return indent * indentUnit;
+    }
   }
 
 
@@ -639,6 +664,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       // console.log("In token for stream = ");
       // console.log(stream);
       var sol = stream.sol();
+      if (sol) 
+        state.indentation = stream.indentation();
       var style = state.tokenizer(stream, state);
       if (style === "IGNORED-SPACE")
         return null;
