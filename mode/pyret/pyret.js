@@ -159,22 +159,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
 
   function tokenizeBlockComment(stream, state) {
-    var ch; //, comment; // uncomment this to debug the comment text
-    while (state.commentNestingDepth > 0 && (ch = stream.peek())) {
-      if (ch === "\\") { 
-        stream.next(); stream.next(); // eat the next two characters
-        // comment += stream.next() || ""; 
-        // comment += stream.next() || ""; 
-      } else if (stream.match("#|", true)) {
-        state.commentNestingDepth++;
-        // comment += "#|";
-      } else if (stream.match("|#", true)) {
-        state.commentNestingDepth--;
-        // comment += "|#";
-      } else {
-        stream.next(); // eat the next character
-        // comment += stream.next() || "";
-      }
+    var prev, next; 
+    while (state.commentNestingDepth > 0 && (next = stream.next()) != null) {
+      if (prev === '#' && next === '|') state.commentNestingDepth++;
+      if (prev === '|' && next === '#') state.commentNestingDepth--;
+      prev = next;
     }
     if (state.commentNestingDepth === 0) state.tokenizer = tokenBase;
     return ret(state, "COMMENT", state.lastContent, 'comment');
@@ -202,7 +191,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
   // Parsing
 
-  function Indent(funs, cases, data, shared, trys, except, graph, parens, objects, vars, fields, initial) {
+  function Indent(funs, cases, data, shared, trys, except, graph, parens, objects, vars, fields, initial, comments) {
     this.fn = funs || 0;
     this.c = cases || 0;
     this.d = data || 0;
@@ -215,28 +204,32 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     this.v = vars || 0;
     this.f = fields || 0;
     this.i = initial || 0;
+    this.comments = comments || 0;
   }
   Indent.prototype.toString = function() {
     return ("Fun " + this.fn + ", Cases " + this.c + ", Data " + this.d + ", Shared " + this.s
             + ", Try " + this.t + ", Except " + this.e + ", Graph " + this.g + ", Parens " + this.p 
-            + ", Object " + this.o + ", Vars " + this.v + ", Fields " + this.f + ", Initial " + this.i);
+            + ", Object " + this.o + ", Vars " + this.v + ", Fields " + this.f + ", Initial " + this.i
+            + ", Comment depth " + this.comments);
   }
   Indent.prototype.copy = function() {
     return new Indent(this.fn, this.c, this.d, this.s, this.t, this.e, this.g, 
-                      this.p, this.o, this.v, this.f, this.i);
+                      this.p, this.o, this.v, this.f, this.i, this.comments);
   }
   Indent.prototype.zeroOut = function() {
-    this.fn = this.c = this.d = this.s = this.t = this.e = this.g = this.p = this.o = this.v = this.f = this.i = 0;
+    this.fn = this.c = this.d = this.s = this.t = this.e = this.g = this.p = this.o = this.v = this.f = this.i = this.comments = 0;
   }
   Indent.prototype.addSelf = function(that) {
     this.fn += that.fn; this.c += that.c; this.d += that.d; this.s += that.s; this.t += that.t; this.e += that.e;
     this.g += that.g; this.p += that.p; this.o += that.o; this.v += that.v; this.f += that.f; this.i += that.i;
+    this.comments += that.comments;
     return this;
   }
   Indent.prototype.add = function(that) { return this.copy().addSelf(that); }
   Indent.prototype.subSelf = function(that) {
     this.fn -= that.fn; this.c -= that.c; this.d -= that.d; this.s -= that.s; this.t -= that.t; that.e -= that.e;
     this.g -= that.g; this.p -= that.p; this.o -= that.o; this.v -= that.v; this.f -= that.f; this.i -= that.i;
+    this.comments -= that.comments;
     return this;
   }
   Indent.prototype.sub = function(that) { return this.copy().subSelf(that); }
@@ -286,7 +279,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     ls = state.lineState;
     if (firstTokenInLine)
       ls.nestingsAtLineStart = ls.nestingsAtLineEnd.copy();
-    if (hasTop(ls.tokens, "NEEDSOMETHING")) {
+    if (hasTop(ls.tokens, "NEEDSOMETHING") && state.lastToken !== "COMMENT") {
       ls.tokens.pop();
       if (hasTop(ls.tokens, "VAR") && ls.deferedOpened.v > 0) {
         ls.deferedOpened.v--;
@@ -577,7 +570,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
 
 
-  const INDENTATION = new Indent(1, 2, 2, 1, 1, 1, 1/*could be 0*/, 1, 1, 1, 1, 1);
+  const INDENTATION = new Indent(1, 2, 2, 1, 1, 1, 1/*could be 0*/, 1, 1, 1, 1, 1, 1.5);
 
   function copyState(oldState) {
     return { tokenizer: oldState.tokenizer, lineState: oldState.lineState.copy(),
@@ -593,9 +586,14 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     // console.log("***** In indent, before processing textAfter (" + textAfter + ")");
     // state.lineState.print();
     state = copyState(state);
+    if (state.commentNestingDepth > 0) {
+      state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
+      return CodeMirror.Pass;
+    }
     if (/^\s*$/.test(textAfter)) {
       state.lineState.nestingsAtLineStart = state.lineState.nestingsAtLineEnd.copy();
     } else {
+      // TODO: track nested comment state in here, to indent if needed
       while (!taSS.eol()) {
         var style = state.tokenizer(taSS, state);
         if (style !== "IGNORED-SPACE") {
