@@ -159,20 +159,17 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
 
   function tokenizeBlockComment(stream, state) {
-    var prev, next; 
-    while (state.commentNestingDepth > 0 && (next = stream.next()) != null) {
-      if (prev === '#' && next === '|') { 
-        state.commentNestingDepth++; 
-        return ret(state, "COMMENT-START", state.lastContent, 'comment');
-      }
-      if (prev === '|' && next === '#') {
-        state.commentNestingDepth--;
-        if (state.commentNestingDepth === 0) state.tokenizer = tokenBase;
-        return ret(state, "COMMENT-END", state.lastContent, 'comment');
-      }
-      prev = next;
+    if (stream.match('#|', true)) {
+      state.commentNestingDepth++; 
+      return ret(state, "COMMENT-START", state.lastContent, 'comment');
+    } else if (stream.match('|#', true)) {
+      state.commentNestingDepth--;
+      if (state.commentNestingDepth === 0) state.tokenizer = tokenBase;
+      return ret(state, "COMMENT-END", state.lastContent, 'comment');
+    } else {
+      stream.next(); stream.eatWhile(/[^#|]/);
+      return ret(state, "COMMENT", state.lastContent, 'comment');
     }
-    return ret(state, "COMMENT", state.lastContent, 'comment');
   }
 
   var tokenStringDouble = mkTokenString('"');
