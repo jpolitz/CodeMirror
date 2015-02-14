@@ -95,6 +95,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       return ret(state, 'string', match[0], 'string');
     } else if (stream.match(/^```/, true)) {
       state.tokenizer = tokenStringTriple;
+      state.inString = stream.column();
       state.lastToken = '```';
       return state.tokenizer(stream, state);
     } else if (match = stream.match(unterminated_string, true)) {
@@ -185,6 +186,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         }
       } else if (stream.match('```', true)) {
         state.tokenizer = tokenBase;
+        state.inString = false;
         return ret(state, 'string', stream.current(), 'string');
       } else
         stream.next();
@@ -592,7 +594,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   function copyState(oldState) {
     return { tokenizer: oldState.tokenizer, lineState: oldState.lineState.copy(),
              lastToken: oldState.lastToken, lastContent: oldState.lastContent,
-             commentNestingDepth: oldState.commentNestingDepth,
+             commentNestingDepth: oldState.commentNestingDepth, inString: oldState.inString,
              dataNoPipeColon: oldState.dataNoPipeColon }
   }
   
@@ -600,6 +602,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     var indentUnit = config.indentUnit;
     var taSS = new CodeMirror.StringStream(textAfter, config.tabSize);
     var sol = true;
+    var inString = state.inString;
     // console.log("***** In indent, before processing textAfter (" + textAfter + ")");
     // state.lineState.print();
     state = copyState(state);
@@ -626,11 +629,14 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (INDENTATION.hasOwnProperty(key))
         indent += (indentSpec[key] || 0) * INDENTATION[key];
     }
-    if (indentSpec.comments > 0) {
+    if ((indentSpec.comments > 0) || (inString !== false)) {
       var spaces = fullLine.match(/\s*/)[0].length;
       if (spaces > 0)       
         return spaces;
-      else return indent * indentUnit;
+      else if (inString !== false)
+        return inString;
+      else 
+        return indent * indentUnit;
     } else if (/^\s*\|\\([^#]\\|$\\)/.test(textAfter)) {
       return (indent - 1) * indentUnit;
     } else {
@@ -643,6 +649,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     startState: function(basecolumn) {
       return {
         tokenizer: tokenBase,
+        inString: false,
+        commentNestingDepth: 0,
         lineState: new LineState([],
                                  new Indent(), new Indent(), 
                                  new Indent(), new Indent(),
