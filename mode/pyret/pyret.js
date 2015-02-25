@@ -641,7 +641,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         return inString;
       else 
         return indent * indentUnit;
-    } else if (/^\s*\|\\([^#]\\|$\\)/.test(textAfter)) {
+    } else if (/^\s*\|([^#]|$)/.test(fullLine)) {
       return (indent - 1) * indentUnit;
     } else {
       return indent * indentUnit;
@@ -684,7 +684,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     indent: indent,
 
-    electricInput: new RegExp("(?:[de.\\]}|:]|[-enst\\*\\+/=<>^~]\\s|is%|is-not%)$"),
+    electricInput: new RegExp("(?:[de.\\]}|:]|\|#|[-enst\\*\\+/=<>^~]\\s|is%|is-not%)$"),
   };
   return external;
 });
