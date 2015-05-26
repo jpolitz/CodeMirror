@@ -322,6 +322,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.deferedOpened.f++;
         ls.tokens.push("FIELD", "NEEDSOMETHING");
       }
+    } else if (state.lastToken === "::") {
+      if (hasTop(ls.tokens, "OBJECT") || hasTop(ls.tokens, "SHARED")) {
+        ls.deferedOpened.f++;
+        ls.tokens.push("FIELD", "NEEDSOMETHING");
+      }
     } else if (state.lastToken === ",") {
       if (hasTop(ls.tokens, "FIELD")) {
         ls.tokens.pop();
