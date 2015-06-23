@@ -12,7 +12,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                 "and", "or", "as", "if", "else", "cases", "is==", "is=~", "is<=>", "is", "satisfies", "raises",
                 "violates", 
                 "check", "examples"]);
-  const pyret_constants = wordRegexp(["true", "false"]);
+  const pyret_booleans = wordRegexp(["true", "false"]);
   const pyret_keywords_hyphen =
     wordRegexp(["provide-types", "type-let", "does-not-raise", "raises-violates", 
                 "raises-satisfies", "raises-other-than", "is-not==", "is-not=~", "is-not<=>", "is-not"]);
@@ -117,8 +117,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         state.dataNoPipeColon = true;
       return ret(state, match[0], match[0], 'keyword');
     }
-    if (match = stream.match(pyret_constants, true)) {
-      return ret(state, match[0], match[0], 'constant');
+    if (match = stream.match(pyret_booleans, true)) {
+      return ret(state, match[0], match[0], 'boolean');
     }
     if (match = stream.match(pyret_keywords_colon, true)) {
       if (stream.peek() === ":")
