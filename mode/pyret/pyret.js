@@ -604,7 +604,9 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     return { tokenizer: oldState.tokenizer, lineState: oldState.lineState.copy(),
              lastToken: oldState.lastToken, lastContent: oldState.lastContent,
              commentNestingDepth: oldState.commentNestingDepth, inString: oldState.inString,
-             dataNoPipeColon: oldState.dataNoPipeColon }
+             dataNoPipeColon: oldState.dataNoPipeColon,
+             sol: oldState.sol
+           }
   }
   
   function indent(state, textAfter, fullLine) {
@@ -663,7 +665,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         lineState: new LineState([],
                                  new Indent(), new Indent(), 
                                  new Indent(), new Indent(),
-                                 new Indent(), new Indent())
+                                 new Indent(), new Indent()),
+        sol: true
       };
     },
     blankLine: function blankLine(state) {
@@ -677,13 +680,15 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     token: function (stream, state) {
       // console.log("In token for stream = ");
       // console.log(stream);
-      var sol = stream.sol();
-      if (sol) 
+      if (!state.sol && stream.sol()) {
+        state.sol = true;
         state.indentation = stream.indentation();
+      }
       var style = state.tokenizer(stream, state);
       if (style === "IGNORED-SPACE")
         return null;
-      parse(sol, state, stream, style);
+      parse(state.sol, state, stream, style);
+      state.sol = false;
       return style;
     },
 
