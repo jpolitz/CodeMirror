@@ -34,8 +34,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                             }
   
   
-  function ret(state, tokType, content, style, pos) {
-    state.lastToken = tokType; state.lastContent = content; state.lastPos = pos;
+  function ret(state, tokType, content, style) {
+    state.lastToken = tokType; state.lastContent = content;
     return style;
   }
 
@@ -44,7 +44,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       return "IGNORED-SPACE";
 
     var ch = stream.peek();
-    var pos = stream.pos;
     
 
     // Handle Comments
@@ -52,15 +51,15 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (stream.match("#|", true)) { 
         state.tokenizer = tokenizeBlockComment;
         state.commentNestingDepth = 1;
-        return ret(state, "COMMENT-START", state.lastContent, 'comment', pos);
+        return ret(state, "COMMENT-START", state.lastContent, 'comment');
       } else {
         stream.skipToEnd();
-        return ret(state, "COMMENT", state.lastContent, 'comment', pos);
+        return ret(state, "COMMENT", state.lastContent, 'comment');
       }
     }
     // Handle Number Literals
     if (stream.match(/^[0-9]+(\.[0-9]+)?/))
-      return ret(state, 'number', stream.current(), 'number', pos);
+      return ret(state, 'number', stream.current(), 'number');
     
     // if (ch === '"') {
     //   state.tokenizer = tokenStringDouble;
@@ -92,61 +91,60 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     var match;
     if (match = stream.match(dquot_str, true)) {
-      return ret(state, 'string', match[0], 'string', pos);
+      return ret(state, 'string', match[0], 'string');
     } else if (match = stream.match(squot_str, true)) {
-      return ret(state, 'string', match[0], 'string', pos);
+      return ret(state, 'string', match[0], 'string');
     } else if (stream.match(/^```/, true)) {
       state.tokenizer = tokenStringTriple;
       state.inString = stream.column();
       state.lastToken = '```';
       return state.tokenizer(stream, state);
     } else if (match = stream.match(unterminated_string, true)) {
-      return ret(state, 'string', match[0], 'unterminated-string', pos);
+      return ret(state, 'string', match[0], 'unterminated-string');
     }
     // Level 1
     if ((match = stream.match(pyret_double_punctuation, true)) || 
         (match = stream.match(pyret_single_punctuation, true))) {
       if (state.dataNoPipeColon && (match[0] == ":" || match[0] == "|"))
         state.dataNoPipeColon = false;
-      return ret(state, match[0], match[0], 'builtin', pos);
+      return ret(state, match[0], match[0], 'builtin');
     }
     if (match = stream.match(pyret_keywords_hyphen, true)) {
-      return ret(state, match[0], match[0], 'keyword', pos);
+      return ret(state, match[0], match[0], 'keyword');
     }
     if (match = stream.match(pyret_keywords, true)) {
       if (match[0] == "data")
         state.dataNoPipeColon = true;
-      return ret(state, match[0], match[0], 'keyword', pos);
+      return ret(state, match[0], match[0], 'keyword');
     }
     if (match = stream.match(pyret_booleans, true)) {
-      return ret(state, match[0], match[0], 'boolean', pos);
+      return ret(state, match[0], match[0], 'boolean');
     }
     if (match = stream.match(pyret_keywords_colon, true)) {
       if (stream.peek() === ":")
-        return ret(state, match[0], match[0], 'keyword', pos);
+        return ret(state, match[0], match[0], 'keyword');
       else
-        return ret(state, 'name', match[0], 'variable', pos);
+        return ret(state, 'name', match[0], 'variable');
     }
     // Level 2
     if (match = stream.match(pyret_indent_regex)) {
       if (state.lastToken === "|" || state.lastToken === "::" || state.lastToken === "data"
           || state.dataNoPipeColon) {
         state.dataNoPipeColon = false;
-        return ret(state, 'name', match[0], 'type', pos);
+        return ret(state, 'name', match[0], 'type');
       }
       else if (stream.match(/\s*\(/, false))
-        return ret(state, 'name', match[0], 'function-name', pos);
-      return ret(state, 'name', match[0], 'variable', pos);
+        return ret(state, 'name', match[0], 'function-name');
+      return ret(state, 'name', match[0], 'variable');
     }
     if (stream.eat("-"))
-      return ret(state, '-', '-', 'builtin', pos);
+      return ret(state, '-', '-', 'builtin');
     stream.next();
     return null;
   }
 
   function mkTokenString(singleOrDouble) {
     return function(stream, state) {
-      var pos = stream.pos;
       var insideRE = singleOrDouble === "'" ? new RegExp("[^'\\]") : new RegExp('[^"\\]');
       var endRE = singleOrDouble === "'" ? new RegExp("'") : new RegExp('"');
       while (!stream.eol()) {
@@ -154,29 +152,28 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         if (stream.eat('\\')) {
           stream.next();
           if (stream.eol())
-            return ret(state, 'string', stream.current(), 'string', pos);
+            return ret(state, 'string', stream.current(), 'string');
         } else if (stream.eat(singleOrDouble)) {
           state.tokenizer = tokenBase;
-          return ret(state, 'string', stream.current(), 'string', pos);
+          return ret(state, 'string', stream.current(), 'string');
         } else
           stream.eat(endRE);
       }
-      return ret(state, 'string', stream.current(), 'string', pos);
+      return ret(state, 'string', stream.current(), 'string');
     };
   }
 
   function tokenizeBlockComment(stream, state) {
-    var pos = stream.pos;
     if (stream.match('#|', true)) {
       state.commentNestingDepth++; 
-      return ret(state, "COMMENT-START", state.lastContent, 'comment', pos);
+      return ret(state, "COMMENT-START", state.lastContent, 'comment');
     } else if (stream.match('|#', true)) {
       state.commentNestingDepth--;
       if (state.commentNestingDepth === 0) state.tokenizer = tokenBase;
-      return ret(state, "COMMENT-END", state.lastContent, 'comment', pos);
+      return ret(state, "COMMENT-END", state.lastContent, 'comment');
     } else {
       stream.next(); stream.eatWhile(/[^#|]/);
-      return ret(state, "COMMENT", state.lastContent, 'comment', pos);
+      return ret(state, "COMMENT", state.lastContent, 'comment');
     }
   }
 
@@ -184,22 +181,21 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   var tokenStringSingle = mkTokenString("'");
 
   function tokenStringTriple(stream, state) {
-    var pos = stream.pos;
     while (!stream.eol()) {
       stream.match(/[^`\\]*/, true); //eatWhile(/[^`\\]|`{1,2}([^`\\]|(?:\\))/);
       if (stream.eat('\\')) {
         stream.next();
         if (stream.eol()) {
-          return ret(state, 'string', stream.current(), 'string', pos);
+          return ret(state, 'string', stream.current(), 'string');
         }
       } else if (stream.match('```', true)) {
         state.tokenizer = tokenBase;
         state.inString = false;
-        return ret(state, 'string', stream.current(), 'string', pos);
+        return ret(state, 'string', stream.current(), 'string');
       } else
         stream.next();
     }
-    return ret(state, 'string', stream.current(), 'string', pos);
+    return ret(state, 'string', stream.current(), 'string');
   }
 
   // Parsing
@@ -275,65 +271,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     console.log("  Tokens = " + this.tokens);
   }
 
-  function TaggedToken(name, pos, endpos, wants) {
-    this.name = name;
-    this.pos = pos;
-    this.wants = wants instanceof Array ? wants : [wants];
-    this.endpos = endpos;
-  }
-
-  TaggedToken.prototype.match = function(state) {
-    var ret = null;
-    var tpos = this.pos;
-    var tepos = this.endpos;
-    this.wants.forEach(function(want) {
-      if (state.lastToken === want) {
-        var pos = state.lastPos + state.solOffset;
-        var endpos = pos + want.length;
-        if (ret === null) {
-          ret = [tpos, tepos, pos, endpos];
-        }
-      }
-    });
-    return ret;
-  };
-
-  function RangeMap() {
-    this.contents = {};
-    this.ranges = [];
-  }
-
-  RangeMap.prototype.lookup = function(value) {
-    var ret = undefined;
-    var contents = this.contents;
-    this.ranges.forEach(function(range) {
-      if (range.low <= value && range.high > value) {
-        ret = contents[range.low];
-      }
-    });
-    return ret;
-  };
-
-  RangeMap.prototype.put = function(low, high, value) {
-    if (this.lookup(low)) {
-      for (var i = 0; i < this.ranges.length; i++) {
-        if (this.ranges[i].low <= low && this.ranges[i].high > low) {
-          delete this.contents[this.ranges[i].low];
-          this.ranges.splice(i, 1);
-        }
-      }
-    }
-    this.contents[low] = value;
-    this.ranges.push({low: low, high: high});
-  };
-
-  RangeMap.prototype.forEach = function(func) {
-    var contents = this.contents;
-    this.ranges.forEach(function(range) {
-      func(contents[range.low], range.low, range.high);
-    });
-  };
-
   function peek(arr) { return arr[arr.length - 1]; }
   function hasTop(arr, wanted) {
     if (wanted instanceof Array) {
@@ -343,16 +280,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         }
       }
       return true;
-    } else if (arr[arr.length - 1] instanceof TaggedToken) {
-      return arr[arr.length - 1].name === wanted;
     } else {
       return arr[arr.length - 1] === wanted;
     }
   }
   function parse(firstTokenInLine, state, stream, style) {
-    function tagged(name, wants) {
-      return new TaggedToken(name, state.solOffset + state.lastPos, state.solOffset + stream.pos, wants);
-    }
     ls = state.lineState;
     if (firstTokenInLine) {
       ls.nestingsAtLineStart = ls.nestingsAtLineEnd.copy();
@@ -418,31 +350,31 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       ls.tokens.push("VAR", "NEEDSOMETHING", "WANTCOLONOREQUAL");
     } else if (state.lastToken === "fun" || state.lastToken === "method" || state.lastToken === "lam") {
       ls.deferedOpened.fn++;
-      ls.tokens.push(tagged("FUN", "end"), "WANTOPENPAREN");
+      ls.tokens.push("FUN", "WANTOPENPAREN");
     } else if (state.lastToken === "let" || state.lastToken === "letrec") {
       ls.deferedOpened.fn++;
-      ls.tokens.push(tagged("LET", "end"), "WANTCOLON");
+      ls.tokens.push("LET", "WANTCOLON");
     } else if (state.lastToken === "when") {
       ls.deferedOpened.fn++; // when indents like functions
-      ls.tokens.push(tagged("WHEN", "end"), "WANTCOLON");
+      ls.tokens.push("WHEN", "WANTCOLON");
     } else if (state.lastToken === "for") {
       ls.deferedOpened.fn++; // for-loops indent like functions
-      ls.tokens.push(tagged("FOR", "end"), "WANTCOLON");
+      ls.tokens.push("FOR", "WANTCOLON");
     } else if (state.lastToken === "cases") {
       ls.deferedOpened.c++;
-      ls.tokens.push(tagged("CASES", "end"), "WANTCOLON", "WANTCLOSEPAREN", "WANTOPENPAREN");
+      ls.tokens.push("CASES", "WANTCOLON", "WANTCLOSEPAREN", "WANTOPENPAREN");
     } else if (state.lastToken === "data") {
       ls.deferedOpened.d++;
-      ls.tokens.push(tagged("DATA", "end"), "WANTCOLON", "NEEDSOMETHING");
+      ls.tokens.push("DATA", "WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "ask") {
       ls.deferedOpened.c++;
-      ls.tokens.push(tagged("IFCOND", "end"));
+      ls.tokens.push("IFCOND");
     } else if (state.lastToken === "if") {
       if (hasTop(ls.tokens, "WANTCOLONORIF"))
         ls.tokens.pop();
       else {
         ls.deferedOpened.fn++;
-        ls.tokens.push(tagged("IF", "end"));
+        ls.tokens.push("IF");
       }
       ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "else") {
@@ -480,10 +412,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
         ls.tokens.pop(); ls.tokens.pop();
         //ls.curClosed.o++;
-        ls.tokens.push(tagged("SHARED", "end"), "WANTCOLON");
+        ls.tokens.push("SHARED", "WANTCOLON");
       } else if (hasTop(ls.tokens, "DATA")) {
         ls.tokens.pop();
-        ls.tokens.push(tagged("SHARED", "end"), "WANTCOLON");
+        ls.tokens.push("SHARED", "WANTCOLON");
       }
     } else if (state.lastToken === "where" || (state.lastToken === "examples" && ls.tokens.length > 0)) {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"])) {
@@ -498,13 +430,13 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.curClosed.s++; ls.deferedOpened.s++;
       }
       ls.tokens.pop();
-      ls.tokens.push(tagged("CHECK", "end"), "WANTCOLON");
+      ls.tokens.push("CHECK", "WANTCOLON");
     } else if (state.lastToken === "check" || (state.lastToken === "examples" && ls.tokens.length === 0)) {
       ls.deferedOpened.s++;
-      ls.tokens.push(tagged("CHECK", "end"), "WANTCOLON");
+      ls.tokens.push("CHECK", "WANTCOLON");
     } else if (state.lastToken === "try") {
       ls.deferedOpened.t++;
-      ls.tokens.push(tagged("TRY", "end"), "WANTCOLON");
+      ls.tokens.push("TRY", "WANTCOLON");
     } else if (state.lastToken === "except") {
       if (ls.curOpened.t > 0) ls.curOpened.t--;
       else if (ls.deferedOpened.t > 0) ls.deferedOpened.t--;
@@ -515,10 +447,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       }
     } else if (state.lastToken === "block") {
       ls.deferedOpened.fn++;
-      ls.tokens.push(tagged("BLOCK", "end"), "WANTCOLON");
+      ls.tokens.push("BLOCK", "WANTCOLON");
     } else if (state.lastToken === "ref-graph") {
       ls.deferedOpened.g++;
-      ls.tokens.push(tagged("GRAPH", "end"), "WANTCOLON");
+      ls.tokens.push("GRAPH", "WANTCOLON");
     } else if (state.lastToken === "[") {
       ls.deferedOpened.o++;
       ls.tokens.push("ARRAY");
@@ -554,7 +486,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       if (hasTop(ls.tokens, "WANTOPENPAREN")) {
         ls.tokens.pop();
       } else if (hasTop(ls.tokens, "OBJECT") || hasTop(ls.tokens, "SHARED")) {
-        ls.tokens.push(tagged("FUN", "end"));
+        ls.tokens.push("FUN");
         ls.deferedOpened.fn++;
       } else {
         ls.tokens.push("WANTCLOSEPAREN");
@@ -585,19 +517,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       }
       var stillUnclosed = true;
       while (stillUnclosed && ls.tokens.length) {
-        var matches = (top instanceof TaggedToken) && top.match(state);
-        if (matches) {
-          var toPut = {start: {start: matches[0], end: matches[1]},
-                        end: {start: matches[2], end: matches[3]}};
-          if (matches[0] > matches[2]) {
-            var temp = toPut.start;
-            toPut.start = toPut.end;
-            toPut.end = temp;
-          }
-          state.matchTable.put(matches[0], matches[1], toPut);
-          state.matchTable.put(matches[2], matches[3], toPut);
-        }
-        top = (top && top.name) || top;
         // Things that are not counted at all:
         //   provide, wantcolon, wantcolonorequal, needsomething, wantopenparen
         // Things that are counted but not closable by end:
@@ -686,8 +605,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
              lastToken: oldState.lastToken, lastContent: oldState.lastContent,
              commentNestingDepth: oldState.commentNestingDepth, inString: oldState.inString,
              dataNoPipeColon: oldState.dataNoPipeColon,
-             sol: oldState.sol, matchTable: oldState.matchTable,
-             solOffset: oldState.solOffset, lineLength: oldState.lineLength
+             sol: oldState.sol
            }
   }
   
@@ -737,13 +655,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     }
   }
 
-  function updateLineLength(stream, state) {
-    var startpos = stream.pos;
-    stream.skipToEnd();
-    state.lineLength = stream.pos - startpos;
-    stream.backUp(state.lineLength);
-  }
-
 
   var external = {
     startState: function(basecolumn) {
@@ -755,10 +666,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                                  new Indent(), new Indent(), 
                                  new Indent(), new Indent(),
                                  new Indent(), new Indent()),
-        sol: true,
-        matchTable: new RangeMap(),
-        solOffset: 0,
-        lineLength: null
+        sol: true
       };
     },
     blankLine: function blankLine(state) {
@@ -774,12 +682,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       // console.log(stream);
       if (!state.sol && stream.sol()) {
         state.sol = true;
-        state.solOffset += state.lineLength + 1;
-        updateLineLength(stream, state);
         state.indentation = stream.indentation();
-        start.solOffset += 2 * state.indentation;
-      } else if (!state.lineLength) {
-        updateLineLength(stream, state);
       }
       var style = state.tokenizer(stream, state);
       if (style === "IGNORED-SPACE")
