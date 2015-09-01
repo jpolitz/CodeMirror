@@ -38,11 +38,11 @@
       range.to = Math.max(cur.line + 1, range.to);
       var match = CodeMirror.findMatchingKeyword(cm, cur, range);
       if (!match) return;
-      if (cm.state.matchBothKeywords) {
-        var hit = match.at == "open" ? match.open : match.close;
-        if (hit) cm.state.keywordHit = cm.markText(hit.from, hit.to, {className: "CodeMirror-matchingbracket"});
-      }
+      var hit = match.at == "open" ? match.open : match.close;
       var other = match.at == "close" ? match.open : match.close;
+      if (hit) 
+        cm.state.keywordHit = cm.markText(hit.from, hit.to, 
+          {className: other ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket"});
       if (other)
         cm.state.keywordOther = cm.markText(other.from, other.to, {className: "CodeMirror-matchingbracket"});
       else

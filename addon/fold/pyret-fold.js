@@ -16,17 +16,43 @@
                   "lam", "method", "examples", "block",
                   "ref-graph"];
   const ENDDELIM = ["end"];
-  var ALLDELIMS = [].concat(DELIMS,ENDDELIM);
+  const SPECIALDELIM = [{start: "(", end: ")"},
+                        {start: "[", end: "]"},
+                        {start: "{", end: "}"}];
+  var ALLDELIMS = [].concat(DELIMS,ENDDELIM,"(",")","[","]","{","}");
 
   var delimrx = new RegExp("(" + DELIMS.join("|") + "|" +
-                            ENDDELIM.join("|") + ")", "g");
+                            ENDDELIM.join("|") + "|\\(|\\)|\\[|\\]|{|})", "g");
 
   function isOpening(text) {
-    return !(DELIMS.indexOf(text) === -1);
+    if (DELIMS.indexOf(text) != -1) {
+      return true;
+    }
+    for (var i = 0; i < SPECIALDELIM.length; i++) {
+      if (text === SPECIALDELIM[i].start) return true;
+    }
+    return false;
   }
 
   function isClosing(text) {
-    return !(ENDDELIM.indexOf(text) === -1);
+    if (ENDDELIM.indexOf(text) != -1) {
+      return true;
+    }
+    for (var i = 0; i < SPECIALDELIM.length; i++) {
+      if (text === SPECIALDELIM[i].end) return true;
+    }
+    return false;
+  }
+
+  function keyMatches(open, close) {
+    if (DELIMS.indexOf(open) != -1) {
+      return (ENDDELIM.indexOf(close) != -1);
+    }
+    for (var i = 0; i < SPECIALDELIM.length; i++) {
+      if (open === SPECIALDELIM[i].start)
+        return (close === SPECIALDELIM[i].end);
+    }
+    return false;
   }
 
   function indexOf(str, arr, startIdx) {
@@ -101,8 +127,15 @@
   };
 
   Iter.prototype.keywordAt = function(ch) {
-    var type = this.cm.getTokenTypeAt(Pos(this.line, ch));
-    return type && /keyword/.test(type);
+    // getTokenTypeAt is (according to the CM docs)
+    // faster, so quickly check that before falling
+    // back onto the token string itself
+    var tok = this.cm.getTokenTypeAt(Pos(this.line, ch));
+    if (tok && /keyword/.test(tok)) {
+      return true;
+    }
+    tok = this.cm.getTokenAt(Pos(this.line, ch));
+    return tok && (ALLDELIMS.indexOf(tok.string) != -1);
   };
 
   Iter.prototype.nextLine = function() {
@@ -162,7 +195,13 @@
     }
   };
 
-  Iter.prototype.findMatchingClose = function() {
+  /**
+   * Finds the closing keyword which matches the
+   * token at the current position
+   * FIXME: This and findMatchingOpen should have their loops
+   * reordered in a cleaner fashion. (run keyMatches and then check length)
+   */
+  Iter.prototype.findMatchingClose = function(kw) {
     var stack = [];
     for (;;) {
       var next = this.toNextKeyword(), startLine = this.line;
@@ -171,11 +210,13 @@
       next = next[0];
       if (isClosing(next)) {
         if (stack.length === 0) {
-          return { keyword: next,
-            from: Pos(startLine, startCh),
-            to: Pos(this.line, this.ch) };
+          if (!kw || keyMatches(kw, next)) {
+            return { keyword: next,
+              from: Pos(startLine, startCh),
+              to: Pos(this.line, this.ch) };
+          } else return; // Mismatch
         } else {
-          stack.pop();
+          if (!keyMatches(stack.pop(), next)) return;
         }
       } else {
         stack.push(next);
@@ -183,7 +224,12 @@
     }
   };
 
-  Iter.prototype.findMatchingOpen = function() {
+  /**
+   * Finds the opening keyword which matches the
+   * token at the current position
+   * FIXME: @see Iter.prototype.findMatchingClose()
+   */
+  Iter.prototype.findMatchingOpen = function(kw) {
     var stack = [];
     for (;;) {
       var prev = this.toPrevKeyword();
@@ -195,11 +241,14 @@
       if (isClosing(start)) {
         stack.push(start);
       } else {
-        if (stack.length === 0)
-          return { keyword: start,
-            from: Pos(this.line, this.ch),
-            to: Pos(endLine, endCh) };
-        stack.pop();
+        if (stack.length === 0) {
+          if (!kw || keyMatches(start, kw))
+            return { keyword: start,
+              from: Pos(this.line, this.ch),
+              to: Pos(endLine, endCh) };
+          return; // Mismatch
+        }
+        if (!keyMatches(start, stack.pop())) return;
       }
     }
   };
@@ -226,20 +275,20 @@
     if (!end || !start || cmp(iter, pos) > 0) return;
     var here = {from: Pos(iter.line, iter.ch), to: to, keyword: start[0]};
     if (isClosing(start[0])) {
-      return {open: iter.findMatchingOpen(), close: here, at: "close"};
+      return {open: iter.findMatchingOpen(start[0]), close: here, at: "close"};
     } else {
       iter = new Iter(cm, to.line, to.ch, range);
-      return {open: here, close: iter.findMatchingClose(), at: "open"};
+      return {open: here, close: iter.findMatchingClose(start[0]), at: "open"};
     }
   };
 
   CodeMirror.findEnclosingKeyword = function(cm, pos, range) {
     var iter = new Iter(cm, pos.line, pos.ch, range);
     for (;;) {
-      var open = iter.findMatchinOpen();
+      var open = iter.findMatchingOpen(null);
       if (!open) break;
       var forward = new Iter(cm, pos.line, pos.ch, range);
-      var close = forward.findMatchingClose();
+      var close = forward.findMatchingClose(open.keyword);
       if (close) return {open: open, close: close};
     }
   };
