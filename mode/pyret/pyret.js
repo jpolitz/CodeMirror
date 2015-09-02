@@ -695,6 +695,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     indent: indent,
 
     electricInput: new RegExp("(?:[de.\\]}|:]|\|#|[-enst\\*\\+/=<>^~]\\s|is%|is-not%)$"),
+
+    fold: "pyret"
   };
   return external;
 });
