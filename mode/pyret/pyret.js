@@ -5,19 +5,25 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
   
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
+  const pyret_closing_keywords = ["end"];
+  const pyret_opening_keywords_colon = ["try", "ask", "ref-graph", "block"];
+  const pyret_opening_keywords = pyret_opening_keywords_colon.concat(
+                                  ["fun", "when", "for", "if", "let",
+                                  "cases", "data", "shared", "check",
+                                  "except", "letrec", "lam", "method",
+                                  "examples"]);
   const pyret_keywords = 
-    wordRegexp(["fun", "lam", "method", "var", "rec", "when", "import", "provide", "type", "newtype",
-                "data", "end", "for", "from", "lazy",
-                "shadow", "ref", "let", "letrec",
+    wordRegexp(pyret_opening_keywords.concat(pyret_closing_keywords,
+                ["var", "rec", "import", "provide", "type", "newtype",
+                "from", "lazy", "shadow", "ref",
                 "and", "or", "as", "if", "else", "cases", "is==", "is=~", "is<=>", "is", "satisfies", "raises",
-                "violates", 
-                "check", "examples"]);
+                "violates"]));
   const pyret_booleans = wordRegexp(["true", "false"]);
   const pyret_keywords_hyphen =
     wordRegexp(["provide-types", "type-let", "does-not-raise", "raises-violates", 
                 "raises-satisfies", "raises-other-than", "is-not==", "is-not=~", "is-not<=>", "is-not"]);
   const pyret_keywords_colon = 
-    wordRegexp(["doc", "try", "ask", "otherwise", "then", "with", "sharing", "where", "ref-graph", "block"]);
+    wordRegexp(pyret_opening_keywords_colon.concat(["doc", "otherwise", "then", "with", "sharing", "where"]));
   const pyret_single_punctuation = 
     new RegExp("^([" + [":", ".", "<", ">", ",", "^", "!",
                         ";", "|", "=", "+", "*", "/", "\\\\", // NOTE: No minus
@@ -32,6 +38,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                               "satisfies": true, "violates": true, "raises": true, "raises-other-than": true,
                               "does-not-raise": true, "raises-satisfies": true, "raises-violates": true
                             }
+
+  CodeMirror.defineInitHook(function(cm) {
+    cm.setOption("PyretDelimiters", {opening: pyret_opening_keywords, closing: pyret_closing_keywords});
+  });
   
   
   function ret(state, tokType, content, style) {
@@ -696,7 +706,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     electricInput: new RegExp("(?:[de.\\]}|:]|\|#|[-enst\\*\\+/=<>^~]\\s|is%|is-not%)$"),
 
-    fold: "pyret"
+    fold: "pyret",
+
   };
   return external;
 });

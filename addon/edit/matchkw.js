@@ -23,13 +23,15 @@
   });
 
   function clear(cm) {
-    if (cm.state.keywordHit) cm.state.keywordHit.clear();
-    if (cm.state.keywordOther) cm.state.keywordOther.clear();
-    cm.state.keywordHit = cm.state.keywordOther = null;
+    if (cm.state.keywordMarks)
+      for (var i = 0; i < cm.state.keywordMarks.length; i++)
+        cm.state.keywordMarks[i].clear();
+    cm.state.keywordMarks = [];
   }
 
   function doMatchKeywords(cm) {
     cm.state.failedKeywordMatch = false;
+
     cm.operation(function() {
       clear(cm);
       if (cm.somethingSelected()) return;
@@ -40,13 +42,17 @@
       if (!match) return;
       var hit = match.at == "open" ? match.open : match.close;
       var other = match.at == "close" ? match.open : match.close;
-      if (hit) 
-        cm.state.keywordHit = cm.markText(hit.from, hit.to, 
-          {className: other ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket"});
-      if (other)
-        cm.state.keywordOther = cm.markText(other.from, other.to, {className: "CodeMirror-matchingbracket"});
-      else
-        cm.state.failedKeywordMatch = true;
+      var wordStyle = match.matches ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket";
+      var regionStyle = wordStyle + "-region";
+      cm.state.failedKeywordMatch = !match.matches;
+      cm.state.keywordMarks.push(cm.markText(hit.from, hit.to, {className: wordStyle}));
+      match.extra.forEach(function(tok){
+        cm.state.keywordMarks.push(cm.markText(tok.from, tok.to, {className: wordStyle}));
+      });
+      if (other) {
+        cm.state.keywordMarks.push(cm.markText(other.from, other.to, {className: wordStyle}));
+        cm.state.keywordMarks.push(cm.markText(match.open.from, match.close.to, {className: regionStyle}));
+      }
     });
   }
 

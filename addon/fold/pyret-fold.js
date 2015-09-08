@@ -9,22 +9,68 @@
   "use strict";
 
   var Pos = CodeMirror.Pos;
+
+  /**
+   * Returns the difference between two {@link CodeMirror.Pos} objects
+   */
   function cmp(a, b) { return a.line - b.line || a.ch - b.ch; }
-  const DELIMS = ["fun", "when", "for", "if", "let",
-                  "cases", "data", "shared", "check",
-                  "try", "except", "letrec", "ask",
-                  "lam", "method", "examples", "block",
-                  "ref-graph"];
-  const ENDDELIM = ["end"];
-  const SPECIALDELIM = [{start: "(", end: ")"},
-                        {start: "[", end: "]"},
-                        {start: "{", end: "}"}];
-  var ALLDELIMS = [].concat(DELIMS,ENDDELIM,"(",")","[","]","{","}");
 
-  var delimrx = new RegExp("(" + DELIMS.join("|") + "|" +
-                            ENDDELIM.join("|") + "|\\(|\\)|\\[|\\]|{|})", "g");
+  var DELIMS;
+  var ENDDELIM;
+  var SPECIALDELIM;
+  var ALLDELIMS;
+  var delimrx;
 
+
+  CodeMirror.defineOption("PyretDelimiters", {opening: [], closing: []},
+    function(editor, newVal) {
+      DELIMS = newVal.opening;
+      ENDDELIM = newVal.closing;
+      SPECIALDELIM = [{start: "(", end: ")"},
+        {start: "[", end: "]"},
+        {start: "{", end: "}"}];
+      ALLDELIMS = [].concat(DELIMS,ENDDELIM,"(",")","[","]","{","}");
+
+      delimrx = new RegExp("(" + DELIMS.join("|") + "|" +
+        ENDDELIM.join("|") + "|\\(|\\)|\\[|\\]|{|})", "g");
+    });
+
+
+
+  var SIMPLESUBKEYWORDS = {
+    "if": ["else"], "fun": ["where"],
+    "data": ["sharing", "where"], "method": ["where"]
+  };
+
+  var SEQSUBKEYWORDS = {
+    "if": [["else", "if"]]
+  };
+
+  var INV_SIMPLESUBKEYWORDS = {};
+  Object.keys(SIMPLESUBKEYWORDS).forEach(function(key){
+    var arr = SIMPLESUBKEYWORDS[key];
+    arr.forEach(function(skw) {
+      INV_SIMPLESUBKEYWORDS[skw] = INV_SIMPLESUBKEYWORDS[skw] || [];
+      INV_SIMPLESUBKEYWORDS[skw].push(key);
+    });
+  });
+
+  var FLAT_SEQ = [];
+  Object.keys(SEQSUBKEYWORDS).forEach(function(k) {
+    var tmp = [];
+    SEQSUBKEYWORDS[k].forEach(function(arr){tmp = tmp.concat(arr);});
+    FLAT_SEQ = FLAT_SEQ.concat(tmp);
+  });
+
+  /**
+   * Checks the given text for whether it is an opening keyword
+   * (Done textually...assumption is that the text originates from
+   * a keyword or builtin token type)
+   * @param {string} text - The text to check
+   * @returns {boolean} Whether the given text is an opening delimiter
+   */
   function isOpening(text) {
+    text = (typeof(text) === 'string') ? text : text.string;
     if (DELIMS.indexOf(text) != -1) {
       return true;
     }
@@ -34,7 +80,15 @@
     return false;
   }
 
+  /**
+   * Checks the given text for whether it is a closing keyword
+   * (Done textually...assumption is that the text originates from
+   * a keyword or builtin token type)
+   * @param {string} text - The text to check
+   * @returns {boolean} Whether the given text is a closing delimiter
+   */
   function isClosing(text) {
+    text = (typeof(text) === 'string') ? text : text.string;
     if (ENDDELIM.indexOf(text) != -1) {
       return true;
     }
@@ -44,7 +98,17 @@
     return false;
   }
 
+  /**
+   * Returns whether the given opening and closing tags
+   * (textually) match. Undefined behavior if one or both
+   * arguments are not valid
+   * @param {string} open - The opening tag to check
+   * @param {string} close - The closing tag to check
+   * @returns {boolean} If the match succeeded
+   */
   function keyMatches(open, close) {
+    open = (typeof(open) === 'string') ? open : open.string;
+    close = (typeof(close) === 'string') ? close : close.string;
     if (DELIMS.indexOf(open) != -1) {
       return (ENDDELIM.indexOf(close) != -1);
     }
@@ -55,170 +119,429 @@
     return false;
   }
 
+  /**
+   * Functions like {@link String#indexOf}, except
+   * accepts an array of needles to search for
+   * (and returns the first match)
+   * @param {string} str - The string to search
+   * @param {string[]} arr - The list of needles to look for
+   * @param {number} [startIdx=0] - The index to begin the search at
+   * @returns {Object} The first index of a match, or -1 if there is none, and the matched word
+   */
   function indexOf(str, arr, startIdx) {
     startIdx = startIdx || 0;
     var idx = -1;
+    var word = null;
     arr.forEach(function(needle) {
       var temp = str.indexOf(needle, startIdx);
-      if (temp != -1)
+      if (temp != -1) {
         idx = (idx === -1) ? temp : Math.min(temp, idx);
+        if (idx === temp)
+          word = needle;
+      }
     });
-    return idx;
+    return {index: idx, needle: word};
   }
 
-  function lastIndexOf(str, arr, fromIdx) {
-    fromIdx = fromIdx || str.length;
-    var idx = -1;
-    arr.forEach(function(needle) {
-      idx = Math.max(idx, str.lastIndexOf(needle, fromIdx));
-    });
-    return idx;
-  }
-
-  // Returns the index of the word in arr which
-  // curIdx is inside of within str
-  // dir => 1 = indexOf; -1 = lastIndexOf
-  // (Basically indexOf and lastIndexOf plus
-  //  accounting for starting in the middle of a word)
+  /**
+   * Like {@link indexOf} and {@link lastIndexOf}, but
+   * allows for the starting index to be inside of any matched words
+   * @param {string} str - The string to search
+   * @param {string[]} arr - The list of needles to look for
+   * @param {number} [curIdx=0] - The index to begin the search at
+   * @param {number} [dir=1] - The direction to search (1 == indexOf, -1 == lastIndexOf)
+   * @returns {Object} The index of the matching word, if any. Otherwise, -1.
+   */
   function startIndex(str, arr, curIdx, dir) {
+    if (curIdx > str.length) return {index: -1, needle: null};
     dir = (dir === 1 || dir === -1) ? dir : 1;
     curIdx = (curIdx && curIdx >= 0) ? curIdx : 0;
     var idx = -1;
+    var word = null;
     if (dir === 1) {
       arr.forEach(function(needle) {
         var startIdx = curIdx - needle.length;
         startIdx = str.indexOf(needle, startIdx);
-        if (startIdx != -1)
+        if (startIdx != -1) {
           idx = (idx === -1) ? startIdx : Math.min(idx, startIdx);
+          // idx === startIdx iff we've replaced idx with startIdx
+          if (idx === startIdx)
+            word = needle;
+        }
       });
     } else {
       arr.forEach(function(needle) {
         // startIdx == Worst case scenario
-        var startIdx = curIdx;
-        idx = Math.max(idx, str.lastIndexOf(needle, startIdx));
+        var startIdx = str.lastIndexOf(needle, curIdx);
+        idx = Math.max(idx, startIdx);
+        if ((startIdx != -1) && (idx === startIdx))
+          word = needle;
       });
     }
-    return idx;
+    return {index: idx, needle: word};
   }
 
-  // Line startIndex, but returns the index of the
-  // last character of the match
-  function endIndex(str, arr, curIdx, dir) {
-    var idx = startIndex(str, arr, curIdx, dir);
-    if (idx === -1) return idx;
-    str = str.substring(idx);
-    var ret = -1;
-    arr.forEach(function(needle) {
-      if (needle === str.substring(0, needle.length))
-        ret = idx + needle.length - 1;
-    });
-    return ret;
-  }
-
-  function Iter(cm, line, ch, range) {
-    this.line = line; this.ch = ch;
-    this.cm = cm; this.text = cm.getLine(line);
+  /**
+   * Encapsulates an iterator over the CodeMirror instance's body
+   * @param {CodeMirror} cm - The CodeMirror instance
+   * @param {number} line - The active line
+   * @param {number} ch - The active location on the line
+   * @param {Object} [range] - The delimiting start/end lines for the iterator
+   * @constructor
+   */
+  function TokenStream(cm, line, ch, range) {
+    this.line = line;
+    this.cm = cm;
+    this.text = cm.getLine(line);
     this.min = range ? range.from : cm.firstLine();
     this.max = range ? range.to - 1 : cm.lastLine();
+    var curTok = cm.getTokenAt(Pos(line, ch));
+    this.current = {start: curTok.start, end: curTok.end};
   }
 
-  Iter.prototype.curPos = function() {
-    return Pos(this.line, this.ch);
+  /**
+   * Duplicates this {@link TokenStream} object
+   * @returns {TokenStream} the duplicated object
+   */
+  TokenStream.prototype.copy = function() {
+    return new TokenStream(this.cm,
+      this.line,
+      this.current.start,
+      {from: this.min, to: this.max});
   };
 
-  Iter.prototype.keywordAt = function(ch) {
-    // getTokenTypeAt is (according to the CM docs)
-    // faster, so quickly check that before falling
-    // back onto the token string itself
-    var tok = this.cm.getTokenTypeAt(Pos(this.line, ch));
-    if (tok && /keyword/.test(tok)) {
-      return true;
+  /**
+   * Moves this {@link TokenStream} to the next line
+   * @returns {boolean} Whether the move was successful
+   */
+  TokenStream.prototype.nextLine = function() {
+    if (this.line >= this.max) {
+      this.current.end = null;
+      return false;
     }
-    tok = this.cm.getTokenAt(Pos(this.line, ch));
-    return tok && (ALLDELIMS.indexOf(tok.string) != -1);
-  };
-
-  Iter.prototype.nextLine = function() {
-    if (this.line >= this.max) return;
-    this.ch = 0;
     this.text = this.cm.getLine(++this.line);
+    var fst = this.cm.getTokenAt(Pos(this.line, 1));
+    // Empty line
+    if ((fst.start === 0) && (fst.end === 0)) return this.nextLine();
+    this.current.start = fst.start;
+    this.current.end = fst.end;
     return true;
   };
 
-  Iter.prototype.prevLine = function() {
-    if (this.line <= this.min) return;
+  /**
+   * Moves this {@link TokenStream} to the previous line
+   * @returns {boolean} Whether the move was successful
+   */
+  TokenStream.prototype.prevLine = function() {
+    if (this.line <= this.min) {
+      this.current.start = null;
+      return false;
+    }
     this.text = this.cm.getLine(--this.line);
-    this.ch = this.text.length;
+    var last = this.cm.getLineTokens(this.line);
+    // FIXME: Only one of these two checks should be needed
+    // check if getLineTokens failed or is empty (if so, try prior line)
+    if (!last || last.length === 0) return this.prevLine();
+    last = last[last.length - 1];
+    // Empty line
+    if ((last.start === 0) && (last.end === 0)) return this.prevLine();
+    this.current.start = last.start;
+    this.current.end = last.end;
     return true;
   };
 
-  Iter.prototype.toKeywordEnd = function() {
-    for (;;) {
-      var idx = endIndex(this.text, ALLDELIMS, this.ch);
-      if (idx == -1) { if (this.nextLine()) continue; else return; }
-      if (!this.keywordAt(idx + 1)) { this.ch = idx + 1; continue; }
-      this.ch = idx + 1;
-      return true;
+  /**
+   * EFFECTS: Advances the {@link TokenStream}
+   *  to the next token
+   * @returns {Object} The next token in the stream
+   */
+  TokenStream.prototype.next = function() {
+    var tok;
+    if (this.current.end === null) return null;
+    else if (this.current.start === null) {
+      tok = this.cm.getTokenAt(Pos(this.line, this.current.end));
+      tok.line = this.line;
+      this.current.start = tok.start;
+      this.current.end = tok.end;
+      return tok;
     }
+    tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+    tok.line = this.line;
+    var nextTok = this.cm.getTokenAt(Pos(this.line, this.current.end + 1));
+    // End of line
+    if (nextTok.start === this.current.start) {
+      this.nextLine();
+    } else {
+      this.current.start = nextTok.start;
+      this.current.end = nextTok.end;
+    }
+    return tok;
   };
 
-  Iter.prototype.toKeywordStart = function() {
-    for (;;) {
-      var idx = this.ch ? startIndex(this.text, ALLDELIMS, this.ch - 1, -1) : -1;
-      if (idx == -1) { if (this.prevLine()) continue; else return; }
-      if (!this.keywordAt(idx + 1)) { this.ch = idx; continue; }
-      delimrx.lastIndex = idx;
-      this.ch = idx;
-      var match = delimrx.exec(this.text);
-      if (match && match.index == idx) return match;
-    }
+  /**
+   * Like {@link TokenStream#next}, but doesn't advance the stream
+   * @returns {Object} The next token in the stream
+   */
+  TokenStream.prototype.peekNext = function() {
+    if (this.current.end === null) return null;
+    var tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+    tok.line = this.line;
+    return tok;
   };
 
-  Iter.prototype.toNextKeyword = function() {
-    for (;;) {
-      delimrx.lastIndex = this.ch;
-      var found = delimrx.exec(this.text);
-      if (!found) { if (this.nextLine()) continue; else return; }
-      if (!this.keywordAt(found.index + 1)) { this.ch = found.index + 1; continue; }
-      this.ch = found.index + found[0].length;
-      return found;
+  /**
+   * Be advised that
+   * TokenStream.prev() == TokenStream.next()
+   * (they are intensionally distinct, but
+   *  logically the same)
+   *
+   * EFFECTS: Advances the {@link TokenStream}
+   *  to the previous token
+   * @returns {Object} The previous token in the stream
+   */
+  TokenStream.prototype.prev = function() {
+    var tok;
+    if (this.current.start === null) return null;
+    else if (this.current.end === null) {
+      tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+      tok.line = this.line;
+      this.current.start = tok.start;
+      this.current.end = tok.end;
+      return tok;
     }
+
+    if (this.current.start === 0) {
+      // prevLine mutates this.current
+      if (!this.prevLine()) return null;
+      tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+    } else {
+      tok = this.cm.getTokenAt(Pos(this.line, this.current.start));
+      this.current.start = tok.start;
+      this.current.end = tok.end;
+    }
+    tok.line = this.line;
+    return tok;
   };
 
-  Iter.prototype.toPrevKeyword = function() {
-    for (;;) {
-      var kw = this.ch ? endIndex(this.text, ALLDELIMS, this.ch - 1, -1) : -1;
-      if (kw == -1) { if (this.prevLine()) continue; else return; }
-      if (!this.keywordAt(kw + 1)) { this.ch = kw; continue; }
-      this.ch = kw + 1;
-      return true;
+  /**
+   * Like {@link TokenStream#prev}, but doesn't move back the stream
+   * @returns {Object} The previous token in the stream
+   */
+  TokenStream.prototype.peekPrev = function() {
+    if (this.current.start === null) return null;
+    var curLine = this.line;
+    var curCurrent = this.current;
+    var tok;
+    if (this.current.start === 0) {
+      if (!this.prevLine()) {
+        tok = null;
+      } else {
+        tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+        tok.line = this.line;
+      }
+    } else {
+      tok = this.cm.getTokenAt(Pos(this.line, this.current.start));
+      tok.line = this.line;
+    }
+    this.line = curLine;
+    this.current = curCurrent;
+    return tok;
+  };
+
+  /**
+   * Finds the next token in the stream which matches the
+   * given criteria
+   * @param {Object} [opts] The search criteria ( uses opts.string and opts.type )
+   * @returns {Object} The matching token, if any
+   */
+  TokenStream.prototype.findNext = function(opts) {
+    opts = opts || {};
+    var string = opts.string || new RegExp(".*");
+    var type = opts.type || new RegExp(".*");
+    var next;
+    while(next = this.next()) {
+      if (next.string.match(string) && next.type && next.type.match(type)) return next;
+    }
+    return null;
+  };
+
+  /**
+   * Finds the previous token in the stream which matches the
+   * given criteria
+   * @param {Object} [opts] The search criteria ( uses opts.string and opts.type )
+   * @returns {Object} The matching token, if any
+   */
+  TokenStream.prototype.findPrev = function(opts) {
+    opts = opts || {};
+    var string = opts.string || new RegExp(".*");
+    var type = opts.type || new RegExp(".*");
+    var prev;
+    while(prev = this.prev()) {
+      if (prev.string.match(string) && prev.type && prev.type.match(type)) return prev;
+    }
+    return null;
+  };
+
+  /**
+   *
+   * @param {Object} [opts] Predicate criteria ( uses opts.string and opts.type )
+   * @returns {boolean} Whether the next token in the stream meets
+   * the criteria in opts
+   */
+  TokenStream.prototype.nextMatches = function(opts) {
+    opts = opts || {};
+    opts.filterOut = opts.filterOut || {};
+    var string = opts.string || new RegExp(".*");
+    var type = opts.type || new RegExp(".*");
+    var filterString = opts.filterOut.string;
+    var filterType = opts.filterOut.type;
+    var copy = this.copy();
+    for(;;) {
+      var next = copy.next();
+      if (filterString && next && next.string.match(filterString)) {
+        continue;
+      } else if (filterType && next && next.type.match(filterType)) {
+        continue;
+      }
+      return (next && next.string.match(string) && next.type.match(type));
     }
   };
 
   /**
+   *
+   * @param {Object} [opts] Predicate criteria ( uses opts.string and opts.type )
+   * @returns {boolean} Whether the previous token in the stream meets
+   * the criteria in opts
+   */
+  TokenStream.prototype.prevMatches = function(opts) {
+    opts = opts || {};
+    opts.filterOut = opts.filterOut || {};
+    var string = opts.string || new RegExp(".*");
+    var type = opts.type || new RegExp(".*");
+    var filterString = opts.filterOut.string;
+    var filterType = opts.filterOut.type;
+    var copy = this.copy();
+    for(;;) {
+      var prev = copy.prev();
+      if (filterString && prev && prev.string.match(filterString)) {
+        continue;
+      } else if (filterType && prev && prev.type.match(filterType)) {
+        continue;
+      }
+      return (prev && prev.string.match(string) && prev.type.match(type));
+    }
+  };
+
+  /**
+   * Checks if the TokenStream is currently on a
+   * sub-keyword sequence as defined by SEQSUBKEYWORDS
+   * @param [opts]
+   * @returns {Object} A mapping of potential keyword matches, if any
+   */
+  TokenStream.prototype.checkSequence = function(opts) {
+    opts = opts || {};
+    var dir = opts.dir || 1;
+    var offset = opts.offset || 0;
+    var seqs = SEQSUBKEYWORDS;
+    if (opts.kw) {
+      var tmp = seqs[opts.kw];
+      seqs = {};
+      seqs[opts.kw] = tmp;
+    }
+    var copy = this.copy();
+    var criteria = {string: /[^\s]+/};
+    while (offset > 0) { copy.next(); offset--; }
+    while (offset < 0) { copy.prev(); offset++; }
+    var fstTok = (dir === 1) ? copy.findNext(criteria) : copy.findPrev(criteria);
+    var sndTok = (dir === 1) ? copy.findNext(criteria) : copy.findPrev(criteria);
+    if (!fstTok || FLAT_SEQ.indexOf(fstTok.string) === -1) return null;
+    if (!sndTok || FLAT_SEQ.indexOf(sndTok.string) === -1) return null;
+    if (!(fstTok.type === "keyword" && sndTok.type === "keyword")) return null;
+    if (dir != 1) {
+      var temp = sndTok;
+      sndTok = fstTok;
+      fstTok = temp;
+    }
+    function doCheck(seq) {
+      if (!Array.isArray(seq) || seq.length === 0) return null;
+      if (seq.length > 2) {
+        console.warn("Cannot have subkeyword sequences longer than length 2");
+        return null;
+      }
+      if (seq[0] === fstTok.string && seq[1] === sndTok.string) {
+        return {from: Pos(fstTok.line, fstTok.start), to: Pos(sndTok.line, sndTok.end)};
+      }
+      return null;
+    }
+    var collected = {};
+    var any = false;
+    Object.keys(SEQSUBKEYWORDS).forEach(function(key) {
+      var seqs = SEQSUBKEYWORDS[key];
+      seqs.forEach(function(seq) {
+        var res = doCheck(seq);
+        if (res) {
+          any = true;
+          collected[key] = collected[key] || [];
+          collected[key].push(res);
+        }
+      });
+    });
+    return any ? collected : null;
+  };
+
+  var elseIfFilter = {type: /keyword/, string: /else/,
+    filterOut: {string: /\s+/}};
+
+  function IterResult(token, fail, subs) {
+    this.token = token;
+    this.fail = fail;
+    this.subs = subs || [];
+  }
+
+  /**
    * Finds the closing keyword which matches the
    * token at the current position
-   * FIXME: This and findMatchingOpen should have their loops
-   * reordered in a cleaner fashion. (run keyMatches and then check length)
+   *
+   * @param {string} [kw] - The keyword to match
+   * @returns {IterResult} The resulting matched closing keyword
    */
-  Iter.prototype.findMatchingClose = function(kw) {
+  TokenStream.prototype.findMatchingClose = function(kw) {
     var stack = [];
+    var subs = {};
+    var seqOpts = {offset: -1, dir: 1};
+    var skip = 0;
+    if (kw) seqOpts[kw] = kw;
     for (;;) {
-      var next = this.toNextKeyword(), startLine = this.line;
-      var startCh = this.ch - (next ? next[0].length : 0);
-      if (!next || !(this.toKeywordEnd())) return;
-      next = next[0];
+      var next = this.findNext({type: /builtin|keyword/});
+      if (!next) return new IterResult(null, false, kw ? subs[kw] : []);
+      if (skip > 0) { skip--; continue; }
+      var maybeSeq = this.checkSequence(seqOpts);
+      if (maybeSeq) {
+        skip++;
+        Object.keys(maybeSeq).forEach(function(key) {
+          subs[key] = subs[key] || [];
+          subs[key] = subs[key].concat(maybeSeq[key]);
+        });
+      } else if (INV_SIMPLESUBKEYWORDS[next.string]) {
+        INV_SIMPLESUBKEYWORDS[next.string].forEach(function(key) {
+          subs[key] = subs[key] || [];
+          subs[key].push({from: Pos(next.line, next.start), to: Pos(next.line, next.end)});
+        });
+      }
       if (isClosing(next)) {
         if (stack.length === 0) {
-          if (!kw || keyMatches(kw, next)) {
-            return { keyword: next,
-              from: Pos(startLine, startCh),
-              to: Pos(this.line, this.ch) };
-          } else return; // Mismatch
+          var tok = {keyword: next,
+            from: Pos(next.line, next.start),
+            to: Pos(next.line, next.end)};
+          var fail = !(!kw || keyMatches(kw, next));
+          return new IterResult(tok, fail, (fail || !kw) ? [] : subs[kw]);
         } else {
-          if (!keyMatches(stack.pop(), next)) return;
+          stack.pop();
         }
-      } else {
+      } else if (next.string === "if") {
+        var isElseif = this.prevMatches(elseIfFilter);
+        if (!isElseif) stack.push(next);
+      } else if (isOpening(next)) {
         stack.push(next);
       }
     }
@@ -227,69 +550,96 @@
   /**
    * Finds the opening keyword which matches the
    * token at the current position
-   * FIXME: @see Iter.prototype.findMatchingClose()
+   * @param {string} [kw] - The keyword to match
+   * @returns {IterResult} The resulting matched opening keyword
    */
-  Iter.prototype.findMatchingOpen = function(kw) {
+  TokenStream.prototype.findMatchingOpen = function(kw) {
     var stack = [];
+    var subs = {};
+    var skip = 0;
     for (;;) {
-      var prev = this.toPrevKeyword();
-      if (!prev) return;
-      var endLine = this.line, endCh = this.ch;
-      var start = this.toKeywordStart();
-      if (!start) return;
-      start = start[0];
-      if (isClosing(start)) {
-        stack.push(start);
-      } else {
-        if (stack.length === 0) {
-          if (!kw || keyMatches(start, kw))
-            return { keyword: start,
-              from: Pos(this.line, this.ch),
-              to: Pos(endLine, endCh) };
-          return; // Mismatch
+      var prev = this.findPrev({type: /builtin|keyword/});
+      if (!prev) return new IterResult(null, true);
+      if (skip > 0) { skip--; continue; }
+
+      if (isClosing(prev)) {
+        stack.push(prev);
+      }
+      var maybeSeq = this.checkSequence({offset: 2, dir: -1});
+      if (maybeSeq) {
+        skip++;
+        Object.keys(maybeSeq).forEach(function(key) {
+          subs[key] = subs[key] || [];
+          subs[key] = subs[key].concat(maybeSeq[key]);
+        });
+      } else if (INV_SIMPLESUBKEYWORDS[prev.string]) {
+        INV_SIMPLESUBKEYWORDS[prev.string].forEach(function(key) {
+          subs[key] = subs[key] || [];
+          subs[key].push({from: Pos(prev.line, prev.start), to: Pos(prev.line, prev.end)});
+        });
+      } else if (isOpening(prev)) {
+        if (prev.string === 'if') {
+          var isElseif = this.prevMatches(elseIfFilter);
+          if (isElseif) continue;
         }
-        if (!keyMatches(start, stack.pop())) return;
+        if (stack.length === 0) {
+          var tok = { keyword: prev.string,
+            from: Pos(prev.line, prev.start),
+            to: Pos(prev.line, prev.end) };
+          var fail = !(!kw || keyMatches(prev, kw));
+          return new IterResult(tok, fail, fail ? [] : subs[prev.string]);
+        }
+        // Stack is nonempty
+        stack.pop();
       }
     }
   };
 
   CodeMirror.registerHelper("fold", "pyret", function(cm, start) {
-    var iter = new Iter(cm, start.line, 0);
+    var tstream = new TokenStream(cm, start.line, 0);
     for (;;) {
-      var openKw = iter.toNextKeyword(), end;
-      if (!openKw || iter.line != start.line || !(iter.toKeywordEnd())) return;
-      openKw = openKw[0];
-      if (!isClosing(openKw)) {
-        var start = Pos(iter.line, iter.ch);
-        var close = iter.findMatchingClose();
-        return close && {from: start, to: close.from};
+      var openKw = tstream.findNext({type: /keyword|builtin/, string: delimrx});
+      if (!openKw) return;
+      if (isOpening(openKw) && !tstream.checkSequence({offset: -2, dir: 1})) {
+        var startKw = Pos(openKw.line, openKw.end);
+        if (openKw.string === 'fun') {
+          var tmp = tstream.copy().findNext({string: /[^\s]+/});
+          if (tmp && tmp.type === 'function-name')
+            startKw = Pos(tmp.line, tmp.end);
+        }
+        var close = tstream.findMatchingClose(openKw.string);
+        return close && {from: startKw, to: close.token.from};
       }
     }
   });
 
   CodeMirror.findMatchingKeyword = function(cm, pos, range) {
-    var iter = new Iter(cm, pos.line, pos.ch, range);
-    if (indexOf(iter.text, ALLDELIMS) == -1) return;
-    var end = iter.toKeywordEnd(), to = end && Pos(iter.line, iter.ch);
-    var start = end && iter.toKeywordStart();
-    if (!end || !start || cmp(iter, pos) > 0) return;
-    var here = {from: Pos(iter.line, iter.ch), to: to, keyword: start[0]};
-    if (isClosing(start[0])) {
-      return {open: iter.findMatchingOpen(start[0]), close: here, at: "close"};
-    } else {
-      iter = new Iter(cm, to.line, to.ch, range);
-      return {open: here, close: iter.findMatchingClose(start[0]), at: "open"};
+    //var iter = new Iter(cm, pos.line, pos.ch, range);
+    // No special words on the current line
+    var tstream = new TokenStream(cm, pos.line, pos.ch, range);
+    if (indexOf(tstream.text, ALLDELIMS).index == -1) return;
+    var start = tstream.findNext({type: /keyword|builtin/, string: delimrx});
+    if (!start || cmp(Pos(start.line, start.start), pos) > 0) return;
+    var here = {from: Pos(start.line, start.start), to: Pos(start.line, start.end)};
+    var other;
+    if (isClosing(start.string)) {
+      tstream.prev(); // Push back one word to line up correctly
+      other = tstream.findMatchingOpen(start.string);
+      return {open: other.token, close: here, at: "close", matches: !other.fail, extra: other.subs};
+    } else if (!tstream.checkSequence({offset: -2, dir: 1})) {
+      other = tstream.findMatchingClose(start.string);
+      return {open: here, close: other.token, at: "open", matches: !other.fail, extra: other.subs};
     }
   };
 
   CodeMirror.findEnclosingKeyword = function(cm, pos, range) {
-    var iter = new Iter(cm, pos.line, pos.ch, range);
+    var tstream = new TokenStream(cm, pos.line, pos.ch, range);
     for (;;) {
-      var open = iter.findMatchingOpen(null);
+      var open = tstream.findMatchingOpen(null).token;
       if (!open) break;
-      var forward = new Iter(cm, pos.line, pos.ch, range);
-      var close = forward.findMatchingClose(open.keyword);
-      if (close) return {open: open, close: close};
+      var close = tstream.findMatchingClose(open.keyword);
+      if (close && close.token) return {open: open, close: close.token,
+        matches: !close.fail, extra: close.subs};
     }
   };
 });
