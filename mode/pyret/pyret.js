@@ -13,10 +13,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                                   "except", "letrec", "lam", "method",
                                   "examples"]);
   const pyret_keywords = 
-    wordRegexp(pyret_opening_keywords.concat(pyret_closing_keywords,
+    wordRegexp(["else if"].concat(pyret_opening_keywords, pyret_closing_keywords,
                 ["var", "rec", "import", "provide", "type", "newtype",
                 "from", "lazy", "shadow", "ref",
-                "and", "or", "as", "if", "else", "cases", "is==", "is=~", "is<=>", "is", "satisfies", "raises",
+                "and", "or", "as", "else", "cases", "is==", "is=~", "is<=>", "is", "satisfies", "raises",
                 "violates"]));
   const pyret_booleans = wordRegexp(["true", "false"]);
   const pyret_keywords_hyphen =
@@ -38,10 +38,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
                               "satisfies": true, "violates": true, "raises": true, "raises-other-than": true,
                               "does-not-raise": true, "raises-satisfies": true, "raises-violates": true
                             }
-
-  CodeMirror.defineInitHook(function(cm) {
-    cm.setOption("PyretDelimiters", {opening: pyret_opening_keywords, closing: pyret_closing_keywords});
-  });
   
   
   function ret(state, tokType, content, style) {
@@ -326,7 +322,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
       ls.curOpened.i++;
       ls.deferedClosed.i++;
     } else if (state.lastToken === ":") {
-      if (hasTop(ls.tokens, "WANTCOLON") || hasTop(ls.tokens, "WANTCOLONOREQUAL") || hasTop(ls.tokens, "WANTCOLONORIF"))
+      if (hasTop(ls.tokens, "WANTCOLON") || hasTop(ls.tokens, "WANTCOLONOREQUAL"))
         ls.tokens.pop();
       else if (hasTop(ls.tokens, "OBJECT") || hasTop(ls.tokens, "SHARED")) {
         ls.deferedOpened.f++;
@@ -379,13 +375,17 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "ask") {
       ls.deferedOpened.c++;
       ls.tokens.push("IFCOND");
-    } else if (state.lastToken === "if") {
-      if (hasTop(ls.tokens, "WANTCOLONORIF"))
-        ls.tokens.pop();
-      else {
+    } else if (state.lastToken === "else if") {
+      if (hasTop(ls.tokens, "IF")) {
+        if (ls.curOpened.fn > 0) ls.curOpened.fn--;
+        else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
+        else ls.curClosed.fn++;
         ls.deferedOpened.fn++;
-        ls.tokens.push("IF");
+        ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
       }
+    } else if (state.lastToken === "if") {
+      ls.deferedOpened.fn++;
+      ls.tokens.push("IF");
       ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "else") {
       if (hasTop(ls.tokens, "IF")) {
@@ -393,7 +393,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         else if (ls.deferedOpened.fn > 0) ls.deferedOpened.fn--;
         else ls.curClosed.fn++;
         ls.deferedOpened.fn++;
-        ls.tokens.push("WANTCOLONORIF");
+        ls.tokens.push("WANTCOLON");
       }
     } else if (state.lastToken === "|") {
       if (hasTop(ls.tokens, ["OBJECT", "DATA"]) || hasTop(ls.tokens, ["FIELD", "OBJECT", "DATA"])) {
@@ -707,6 +707,8 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     electricInput: new RegExp("(?:[de.\\]}|:]|\|#|[-enst\\*\\+/=<>^~]\\s|is%|is-not%)$"),
 
     fold: "pyret",
+
+    delimiters: {opening: pyret_opening_keywords, closing: pyret_closing_keywords}
 
   };
   return external;

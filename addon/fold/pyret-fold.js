@@ -15,6 +15,14 @@
    */
   function cmp(a, b) { return a.line - b.line || a.ch - b.ch; }
 
+  function cmpClosest(a, b, c) {
+    var ret = a.line - c.line
+    if (ret) { return ret; }
+    if (a.ch <= c.ch && c.ch <= b.ch) { return 0; }
+    if (Math.abs(a.ch - c.ch) < Math.abs(b.ch - c.ch)) { return a.ch - c.ch; }
+    return b.ch - c.ch;
+  }
+
   var DELIMS;
   var ENDDELIM;
   var SPECIALDELIM;
@@ -22,23 +30,37 @@
   var delimrx;
 
 
-  CodeMirror.defineOption("PyretDelimiters", {opening: [], closing: []},
-    function(editor, newVal) {
-      DELIMS = newVal.opening;
-      ENDDELIM = newVal.closing;
-      SPECIALDELIM = [{start: "(", end: ")"},
-        {start: "[", end: "]"},
-        {start: "{", end: "}"}];
-      ALLDELIMS = [].concat(DELIMS,ENDDELIM,"(",")","[","]","{","}");
+  /**
+   * Kludge of the century...for some reason, defineInitHook doesn't
+   * run this before findMatchingKeyword runs (which it needs to).
+   * Thus, both defineInitHook and findMatchingKeyword are hooked
+   * up to this function, which basically deletes itself after one run.
+   */
+  var initHandler = function(cm) {
+    var pyretMode = cm.getDoc().getMode();
+    if (!pyretMode.delimiters) {
+      console.warn("Unable to find Pyret Delimiters");
+      // To keep things from completely blowing up
+      DELIMS = [];
+      ENDDELIM = [];
+    } else {
+      DELIMS = pyretMode.delimiters.opening;
+      ENDDELIM = pyretMode.delimiters.closing;
+    }
+    SPECIALDELIM = [{start: "(", end: ")"},
+      {start: "[", end: "]"},
+      {start: "{", end: "}"}];
+    ALLDELIMS = [].concat(DELIMS,ENDDELIM,"(",")","[","]","{","}");
 
-      delimrx = new RegExp("(" + DELIMS.join("|") + "|" +
-        ENDDELIM.join("|") + "|\\(|\\)|\\[|\\]|{|})", "g");
-    });
+    delimrx = new RegExp("(" + DELIMS.join("|") + "|" +
+      ENDDELIM.join("|") + "|\\(|\\)|\\[|\\]|{|})", "g");
+    initHandler = function(){};
+  };
 
-
+  CodeMirror.defineInitHook(initHandler);
 
   var SIMPLESUBKEYWORDS = {
-    "if": ["else"], "fun": ["where"],
+    "if": ["else if", "else"], "fun": ["where"],
     "data": ["sharing", "where"], "method": ["where"]
   };
 
@@ -120,6 +142,15 @@
   }
 
   /**
+   * Returns true if the given token is a whitespace character
+   * @param {Object} token
+   * @returns {boolean} Whether the token is whitespace
+   */
+  function isWhitespace(token) {
+    return (token.string.match(/^\s+$/));
+  }
+
+  /**
    * Functions like {@link String#indexOf}, except
    * accepts an array of needles to search for
    * (and returns the first match)
@@ -180,7 +211,7 @@
     }
     return {index: idx, needle: word};
   }
-
+  
   /**
    * Encapsulates an iterator over the CodeMirror instance's body
    * @param {CodeMirror} cm - The CodeMirror instance
@@ -189,7 +220,7 @@
    * @param {Object} [range] - The delimiting start/end lines for the iterator
    * @constructor
    */
-  function TokenStream(cm, line, ch, range) {
+  function TokenTape(cm, line, ch, range) {
     this.line = line;
     this.cm = cm;
     this.text = cm.getLine(line);
@@ -200,21 +231,41 @@
   }
 
   /**
-   * Duplicates this {@link TokenStream} object
-   * @returns {TokenStream} the duplicated object
+   * Duplicates this {@link TokenTape} object
+   * FIXME: Non-carbon copies are only 'close-ish.' Other
+   * code in this file depends on those incorrect copies.
+   * once they are fixed, the `carbon` parameter can be
+   * refactored out.
+   * @returns {TokenTape} the duplicated object
    */
-  TokenStream.prototype.copy = function() {
-    return new TokenStream(this.cm,
+  TokenTape.prototype.copy = function(carbon) {
+    if (carbon) {
+      var ret = new TokenTape(this.cm,
+                                this.line,
+                                this.current.start + 1,
+                                {from: this.min, to: this.max + 1});
+      // Constructor messes with things, so we just need
+      // a valid TokenTape and we can set the fields
+      // ourselves, making sure to pass nothing by reference
+      ret.line = this.line;
+      ret.text = this.text;
+      ret.min  = this.min;
+      ret.max  = this.max;
+      ret.current.start = this.current.start;
+      ret.current.end   = this.current.end;
+      return ret;
+    }
+    return new TokenTape(this.cm,
       this.line,
       this.current.start,
       {from: this.min, to: this.max});
   };
 
   /**
-   * Moves this {@link TokenStream} to the next line
+   * Moves this {@link TokenTape} to the next line
    * @returns {boolean} Whether the move was successful
    */
-  TokenStream.prototype.nextLine = function() {
+  TokenTape.prototype.nextLine = function() {
     if (this.line >= this.max) {
       this.current.end = null;
       return false;
@@ -229,20 +280,17 @@
   };
 
   /**
-   * Moves this {@link TokenStream} to the previous line
+   * Moves this {@link TokenTape} to the previous line
    * @returns {boolean} Whether the move was successful
    */
-  TokenStream.prototype.prevLine = function() {
+  TokenTape.prototype.prevLine = function() {
     if (this.line <= this.min) {
       this.current.start = null;
       return false;
     }
     this.text = this.cm.getLine(--this.line);
-    var last = this.cm.getLineTokens(this.line);
-    // FIXME: Only one of these two checks should be needed
-    // check if getLineTokens failed or is empty (if so, try prior line)
-    if (!last || last.length === 0) return this.prevLine();
-    last = last[last.length - 1];
+    if (this.text.length === 0) return this.prevLine();
+    var last = this.cm.getTokenAt(Pos(this.line, this.text.length));
     // Empty line
     if ((last.start === 0) && (last.end === 0)) return this.prevLine();
     this.current.start = last.start;
@@ -251,38 +299,78 @@
   };
 
   /**
-   * EFFECTS: Advances the {@link TokenStream}
-   *  to the next token
-   * @returns {Object} The next token in the stream
+   * Moves this {@link TokenTape} in the indicated direction
+   * to the next non-whitespace token.
+   * @returns {boolean} Whether the move was successful
    */
-  TokenStream.prototype.next = function() {
+  TokenTape.prototype.move = function(dir) {
+    if ((dir ===  1) && (this.current.end   === null)) return false;
+    if ((dir === -1) && (this.current.start === null)) return false;
+    if ((dir !==  1) && (dir !== -1)) {
+      console.warn("Expected direction of 1 or -1. Given: " + dir.toString());
+      return false;
+    }
+    function nextCh(ts) {
+      if (dir === 1) return ts.current.end + 1;
+      return ts.current.start;
+    }
+    function isEOL(ts) {
+      if (dir === -1) return (ts.current.start === 0);
+      return ts.current.end >= ts.text.length;
+    }
+    function moveLine(ts) {
+      if (dir === 1) return ts.nextLine();
+      return ts.prevLine();
+    }
+    function getTok(ts, useNext) {
+      if (useNext) return ts.cm.getTokenAt(Pos(ts.line, nextCh(ts)));
+      if (dir === 1) {
+        return ts.cm.getTokenAt(Pos(ts.line, ts.current.end));
+      }
+      return ts.cm.getTokenAt(Pos(ts.line, ts.current.start + 1));
+    }
+    var curTok = getTok(this);
+    if (!curTok) return false;
+    this.current.start = curTok.start;
+    this.current.end = curTok.end;
+    for (;;) {
+      // If at end/start of line, move to next/previous line
+      if (isEOL(this)) {
+        if (!moveLine(this)) return false;
+        curTok = getTok(this);
+      } else {
+        curTok = getTok(this, true);
+      }
+      this.current.start = curTok.start;
+      this.current.end = curTok.end;
+      // Break and return if non-whitespace
+      if (!isWhitespace(curTok)) return true;
+    }
+  };
+
+  /**
+   * EFFECTS: Advances the {@link TokenTape}
+   *  to the next token
+   * @returns {boolean} Whether the move succeeded
+   */
+  TokenTape.prototype.next = function() {
+    return this.move(1);
+  };
+
+  TokenTape.prototype.cur = function() {
     var tok;
-    if (this.current.end === null) return null;
-    else if (this.current.start === null) {
-      tok = this.cm.getTokenAt(Pos(this.line, this.current.end));
-      tok.line = this.line;
-      this.current.start = tok.start;
-      this.current.end = tok.end;
-      return tok;
-    }
-    tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+    var using = this.current.end;
+    using = (using === null) ? using - 1 : this.current.start + 1;
+    tok = this.cm.getTokenAt(Pos(this.line, using));
     tok.line = this.line;
-    var nextTok = this.cm.getTokenAt(Pos(this.line, this.current.end + 1));
-    // End of line
-    if (nextTok.start === this.current.start) {
-      this.nextLine();
-    } else {
-      this.current.start = nextTok.start;
-      this.current.end = nextTok.end;
-    }
     return tok;
   };
 
   /**
-   * Like {@link TokenStream#next}, but doesn't advance the stream
+   * Like {@link TokenTape#next}, but doesn't advance the stream
    * @returns {Object} The next token in the stream
    */
-  TokenStream.prototype.peekNext = function() {
+  TokenTape.prototype.peekNext = function() {
     if (this.current.end === null) return null;
     var tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
     tok.line = this.line;
@@ -290,44 +378,18 @@
   };
 
   /**
-   * Be advised that
-   * TokenStream.prev() == TokenStream.next()
-   * (they are intensionally distinct, but
-   *  logically the same)
-   *
-   * EFFECTS: Advances the {@link TokenStream}
-   *  to the previous token
-   * @returns {Object} The previous token in the stream
+   * Advances the {@link TokenTape} to the previous token
+   * @returns {boolean} Whether the move succeeded
    */
-  TokenStream.prototype.prev = function() {
-    var tok;
-    if (this.current.start === null) return null;
-    else if (this.current.end === null) {
-      tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
-      tok.line = this.line;
-      this.current.start = tok.start;
-      this.current.end = tok.end;
-      return tok;
-    }
-
-    if (this.current.start === 0) {
-      // prevLine mutates this.current
-      if (!this.prevLine()) return null;
-      tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
-    } else {
-      tok = this.cm.getTokenAt(Pos(this.line, this.current.start));
-      this.current.start = tok.start;
-      this.current.end = tok.end;
-    }
-    tok.line = this.line;
-    return tok;
+  TokenTape.prototype.prev = function() {
+    return this.move(-1);
   };
 
   /**
-   * Like {@link TokenStream#prev}, but doesn't move back the stream
+   * Like {@link TokenTape#prev}, but doesn't move back the stream
    * @returns {Object} The previous token in the stream
    */
-  TokenStream.prototype.peekPrev = function() {
+  TokenTape.prototype.peekPrev = function() {
     if (this.current.start === null) return null;
     var curLine = this.line;
     var curCurrent = this.current;
@@ -354,13 +416,21 @@
    * @param {Object} [opts] The search criteria ( uses opts.string and opts.type )
    * @returns {Object} The matching token, if any
    */
-  TokenStream.prototype.findNext = function(opts) {
+  TokenTape.prototype.findNext = function(opts) {
     opts = opts || {};
     var string = opts.string || new RegExp(".*");
     var type = opts.type || new RegExp(".*");
+    function matches(tok) {
+      return tok.string.match(string) && tok.type && tok.type.match(type);
+    }
+    if (opts.cur) {
+      var tok = this.cur();
+      if (matches(tok)) return tok;
+    }
     var next;
     while(next = this.next()) {
-      if (next.string.match(string) && next.type && next.type.match(type)) return next;
+      var tok = this.cur();
+      if (matches(tok)) return tok;
     }
     return null;
   };
@@ -371,13 +441,45 @@
    * @param {Object} [opts] The search criteria ( uses opts.string and opts.type )
    * @returns {Object} The matching token, if any
    */
-  TokenStream.prototype.findPrev = function(opts) {
+  TokenTape.prototype.findPrev = function(opts) {
     opts = opts || {};
     var string = opts.string || new RegExp(".*");
     var type = opts.type || new RegExp(".*");
     var prev;
     while(prev = this.prev()) {
-      if (prev.string.match(string) && prev.type && prev.type.match(type)) return prev;
+      var tok = this.cur();
+      if (tok.string.match(string) && tok.type && tok.type.match(type)) return tok;
+    }
+    return null;
+  };
+
+  /**
+   * Like findNext, but looks at only the immediately 
+   * next and current tokens (used in findMatchingKeyword to
+   * determine starting token)
+   * NOTE: Favors tokens on the right of cursor
+   */
+  TokenTape.prototype.findAdjacent = function(opts) {
+    opts = opts || {};
+    var string = opts.string || new RegExp(".*");
+    var type = opts.type || new RegExp(".*");
+    var startPos = opts.pos || Pos(this.line, this.current.start + 1);
+    var matches = function(tok) {
+      if (!tok) { return false; }
+      //var meetsCriteria =  tok.string.match(string) && tok.type && tok.type.match(type);
+      var diff = cmpClosest(Pos(tok.line, tok.start), Pos(tok.line, tok.end), startPos);
+      var sameLine = tok.line === startPos.line;
+      var adjacent = sameLine && diff === 0;
+      return adjacent;
+    };
+    opts.cur = true;
+    var adj = this.findNext(opts);
+    if (matches(adj)) {
+      if (this.current.end === 0) {
+        this.current.start = adj.start;
+        this.current.end   = adj.end;
+      }
+      return adj;
     }
     return null;
   };
@@ -388,7 +490,7 @@
    * @returns {boolean} Whether the next token in the stream meets
    * the criteria in opts
    */
-  TokenStream.prototype.nextMatches = function(opts) {
+  TokenTape.prototype.nextMatches = function(opts) {
     opts = opts || {};
     opts.filterOut = opts.filterOut || {};
     var string = opts.string || new RegExp(".*");
@@ -397,13 +499,14 @@
     var filterType = opts.filterOut.type;
     var copy = this.copy();
     for(;;) {
-      var next = copy.next();
-      if (filterString && next && next.string.match(filterString)) {
+      var existsNext = copy.next();
+      var next = copy.cur();
+      if (filterString && existsNext && next && next.string.match(filterString)) {
         continue;
-      } else if (filterType && next && next.type.match(filterType)) {
+      } else if (filterType && existsNext && next && next.type.match(filterType)) {
         continue;
       }
-      return (next && next.string.match(string) && next.type.match(type));
+      return (existsNext && next && next.string.match(string) && next.type.match(type));
     }
   };
 
@@ -413,7 +516,7 @@
    * @returns {boolean} Whether the previous token in the stream meets
    * the criteria in opts
    */
-  TokenStream.prototype.prevMatches = function(opts) {
+  TokenTape.prototype.prevMatches = function(opts) {
     opts = opts || {};
     opts.filterOut = opts.filterOut || {};
     var string = opts.string || new RegExp(".*");
@@ -422,23 +525,24 @@
     var filterType = opts.filterOut.type;
     var copy = this.copy();
     for(;;) {
-      var prev = copy.prev();
-      if (filterString && prev && prev.string.match(filterString)) {
+      var existsPrev = copy.prev();
+      var prev = copy.cur();
+      if (filterString && existsPrev && prev && prev.string.match(filterString)) {
         continue;
-      } else if (filterType && prev && prev.type.match(filterType)) {
+      } else if (filterType && existsPrev && prev && prev.type.match(filterType)) {
         continue;
       }
-      return (prev && prev.string.match(string) && prev.type.match(type));
+      return (existsPrev && prev && prev.string.match(string) && prev.type.match(type));
     }
   };
 
   /**
-   * Checks if the TokenStream is currently on a
+   * Checks if the TokenTape is currently on a
    * sub-keyword sequence as defined by SEQSUBKEYWORDS
    * @param [opts]
    * @returns {Object} A mapping of potential keyword matches, if any
    */
-  TokenStream.prototype.checkSequence = function(opts) {
+  TokenTape.prototype.checkSequence = function(opts) {
     opts = opts || {};
     var dir = opts.dir || 1;
     var offset = opts.offset || 0;
@@ -505,24 +609,15 @@
    * @param {string} [kw] - The keyword to match
    * @returns {IterResult} The resulting matched closing keyword
    */
-  TokenStream.prototype.findMatchingClose = function(kw) {
+  TokenTape.prototype.findMatchingClose = function(kw) {
     var stack = [];
     var subs = {};
-    var seqOpts = {offset: -1, dir: 1};
     var skip = 0;
-    if (kw) seqOpts[kw] = kw;
     for (;;) {
       var next = this.findNext({type: /builtin|keyword/});
       if (!next) return new IterResult(null, false, kw ? subs[kw] : []);
       if (skip > 0) { skip--; continue; }
-      var maybeSeq = this.checkSequence(seqOpts);
-      if (maybeSeq) {
-        skip++;
-        Object.keys(maybeSeq).forEach(function(key) {
-          subs[key] = subs[key] || [];
-          subs[key] = subs[key].concat(maybeSeq[key]);
-        });
-      } else if (INV_SIMPLESUBKEYWORDS[next.string]) {
+      if (stack.length === 0 && INV_SIMPLESUBKEYWORDS[next.string]) {
         INV_SIMPLESUBKEYWORDS[next.string].forEach(function(key) {
           subs[key] = subs[key] || [];
           subs[key].push({from: Pos(next.line, next.start), to: Pos(next.line, next.end)});
@@ -539,8 +634,7 @@
           stack.pop();
         }
       } else if (next.string === "if") {
-        var isElseif = this.prevMatches(elseIfFilter);
-        if (!isElseif) stack.push(next);
+        stack.push(next);
       } else if (isOpening(next)) {
         stack.push(next);
       }
@@ -553,41 +647,32 @@
    * @param {string} [kw] - The keyword to match
    * @returns {IterResult} The resulting matched opening keyword
    */
-  TokenStream.prototype.findMatchingOpen = function(kw) {
+  TokenTape.prototype.findMatchingOpen = function(kw) {
     var stack = [];
     var subs = {};
     var skip = 0;
     for (;;) {
       var prev = this.findPrev({type: /builtin|keyword/});
+      console.log(prev);
       if (!prev) return new IterResult(null, true);
       if (skip > 0) { skip--; continue; }
 
-      if (isClosing(prev)) {
-        stack.push(prev);
-      }
-      var maybeSeq = this.checkSequence({offset: 2, dir: -1});
-      if (maybeSeq) {
-        skip++;
-        Object.keys(maybeSeq).forEach(function(key) {
-          subs[key] = subs[key] || [];
-          subs[key] = subs[key].concat(maybeSeq[key]);
-        });
-      } else if (INV_SIMPLESUBKEYWORDS[prev.string]) {
+      
+      if (stack.length === 0 && INV_SIMPLESUBKEYWORDS[prev.string]) {
         INV_SIMPLESUBKEYWORDS[prev.string].forEach(function(key) {
           subs[key] = subs[key] || [];
           subs[key].push({from: Pos(prev.line, prev.start), to: Pos(prev.line, prev.end)});
         });
+      }
+      if (isClosing(prev)) {
+        stack.push(prev);
       } else if (isOpening(prev)) {
-        if (prev.string === 'if') {
-          var isElseif = this.prevMatches(elseIfFilter);
-          if (isElseif) continue;
-        }
         if (stack.length === 0) {
           var tok = { keyword: prev.string,
             from: Pos(prev.line, prev.start),
             to: Pos(prev.line, prev.end) };
           var fail = !(!kw || keyMatches(prev, kw));
-          return new IterResult(tok, fail, fail ? [] : subs[prev.string]);
+          return new IterResult(tok, fail, (fail || !kw) ? [] : subs[prev.string]);
         }
         // Stack is nonempty
         stack.pop();
@@ -595,15 +680,39 @@
     }
   };
 
+  TokenTape.prototype.findMatchingParent = function(kw) {
+    var stack = [];
+    var skip = 0;
+    var parents = INV_SIMPLESUBKEYWORDS[kw];
+    if (!parents) {
+      throw new Error("Non-Subkeyword given to findMatchingParent");
+    }
+    for (;;) {
+      var prev = this.findPrev({type: /builtin|keyword/});
+      if (!prev) return new IterResult(null, true);
+      if (skip > 0) { skip--; continue; }
+      if (isClosing(prev)) {
+        stack.push(prev);
+      } else if (stack.length === 0 && parents.indexOf(prev.string) != -1) {
+        if (stack.length === 0)
+          return new IterResult(prev, false, []);
+        if (isOpening(prev))
+          stack.pop();
+      } else if (isOpening(prev)) {
+        stack.pop();
+      }
+    }
+  };
+
   CodeMirror.registerHelper("fold", "pyret", function(cm, start) {
-    var tstream = new TokenStream(cm, start.line, 0);
+    var tstream = new TokenTape(cm, start.line, 0);
     for (;;) {
       var openKw = tstream.findNext({type: /keyword|builtin/, string: delimrx});
       if (!openKw) return;
-      if (isOpening(openKw) && !tstream.checkSequence({offset: -2, dir: 1})) {
+      if (isOpening(openKw)) {
         var startKw = Pos(openKw.line, openKw.end);
         if (openKw.string === 'fun') {
-          var tmp = tstream.copy().findNext({string: /[^\s]+/});
+          var tmp = tstream.copy().next();
           if (tmp && tmp.type === 'function-name')
             startKw = Pos(tmp.line, tmp.end);
         }
@@ -614,18 +723,30 @@
   });
 
   CodeMirror.findMatchingKeyword = function(cm, pos, range) {
-    //var iter = new Iter(cm, pos.line, pos.ch, range);
+    initHandler(cm);
     // No special words on the current line
-    var tstream = new TokenStream(cm, pos.line, pos.ch, range);
-    if (indexOf(tstream.text, ALLDELIMS).index == -1) return;
-    var start = tstream.findNext({type: /keyword|builtin/, string: delimrx});
+    var tstream = new TokenTape(cm, pos.line, pos.ch, range);
+    var start = tstream.findAdjacent({type: /keyword|builtin/, string: delimrx, pos: pos});
+    // Putting these three keywords in the delimrx regular expression breaks
+    // invariants elsewhere...they are subkeywords, so kept separate
+    if (!start) {
+      tstream = new TokenTape(cm, pos.line, pos.ch, range);
+      start = tstream.findAdjacent({type: /keyword|builtin/, string: /else|where|sharing/, pos: pos});
+    }
     if (!start || cmp(Pos(start.line, start.start), pos) > 0) return;
     var here = {from: Pos(start.line, start.start), to: Pos(start.line, start.end)};
     var other;
+    console.log(start);
     if (isClosing(start.string)) {
-      tstream.prev(); // Push back one word to line up correctly
+      //tstream.prev(); // Push back one word to line up correctly
       other = tstream.findMatchingOpen(start.string);
       return {open: other.token, close: here, at: "close", matches: !other.fail, extra: other.subs};
+    } else if (Object.keys(INV_SIMPLESUBKEYWORDS).indexOf(start.string) != -1) {
+      parent = tstream.findMatchingParent(start.string);
+      if (parent.fail) {
+        return {open: parent.token, close: here, at: "open", matches: false, extra: []};
+      }
+      return CodeMirror.findMatchingKeyword(cm, Pos(parent.token.line, parent.token.start), range);
     } else if (!tstream.checkSequence({offset: -2, dir: 1})) {
       other = tstream.findMatchingClose(start.string);
       return {open: here, close: other.token, at: "open", matches: !other.fail, extra: other.subs};
@@ -633,7 +754,7 @@
   };
 
   CodeMirror.findEnclosingKeyword = function(cm, pos, range) {
-    var tstream = new TokenStream(cm, pos.line, pos.ch, range);
+    var tstream = new TokenTape(cm, pos.line, pos.ch, range);
     for (;;) {
       var open = tstream.findMatchingOpen(null).token;
       if (!open) break;
