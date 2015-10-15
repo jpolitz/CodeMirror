@@ -232,33 +232,23 @@
 
   /**
    * Duplicates this {@link TokenTape} object
-   * FIXME: Non-carbon copies are only 'close-ish.' Other
-   * code in this file depends on those incorrect copies.
-   * once they are fixed, the `carbon` parameter can be
-   * refactored out.
    * @returns {TokenTape} the duplicated object
    */
-  TokenTape.prototype.copy = function(carbon) {
-    if (carbon) {
-      var ret = new TokenTape(this.cm,
-                                this.line,
-                                this.current.start + 1,
-                                {from: this.min, to: this.max + 1});
-      // Constructor messes with things, so we just need
-      // a valid TokenTape and we can set the fields
-      // ourselves, making sure to pass nothing by reference
-      ret.line = this.line;
-      ret.text = this.text;
-      ret.min  = this.min;
-      ret.max  = this.max;
-      ret.current.start = this.current.start;
-      ret.current.end   = this.current.end;
-      return ret;
-    }
-    return new TokenTape(this.cm,
-      this.line,
-      this.current.start,
-      {from: this.min, to: this.max});
+  TokenTape.prototype.copy = function() {
+    var ret = new TokenTape(this.cm,
+                            this.line,
+                            this.current.start + 1,
+                            {from: this.min, to: this.max + 1});
+    // Constructor messes with things, so we just need
+    // a valid TokenTape and we can set the fields
+    // ourselves, making sure to pass nothing by reference
+    ret.line = this.line;
+    ret.text = this.text;
+    ret.min  = this.min;
+    ret.max  = this.max;
+    ret.current.start = this.current.start;
+    ret.current.end   = this.current.end;
+    return ret;
   };
 
   /**
@@ -484,118 +474,6 @@
     return null;
   };
 
-  /**
-   *
-   * @param {Object} [opts] Predicate criteria ( uses opts.string and opts.type )
-   * @returns {boolean} Whether the next token in the stream meets
-   * the criteria in opts
-   */
-  TokenTape.prototype.nextMatches = function(opts) {
-    opts = opts || {};
-    opts.filterOut = opts.filterOut || {};
-    var string = opts.string || new RegExp(".*");
-    var type = opts.type || new RegExp(".*");
-    var filterString = opts.filterOut.string;
-    var filterType = opts.filterOut.type;
-    var copy = this.copy();
-    for(;;) {
-      var existsNext = copy.next();
-      var next = copy.cur();
-      if (filterString && existsNext && next && next.string.match(filterString)) {
-        continue;
-      } else if (filterType && existsNext && next && next.type.match(filterType)) {
-        continue;
-      }
-      return (existsNext && next && next.string.match(string) && next.type.match(type));
-    }
-  };
-
-  /**
-   *
-   * @param {Object} [opts] Predicate criteria ( uses opts.string and opts.type )
-   * @returns {boolean} Whether the previous token in the stream meets
-   * the criteria in opts
-   */
-  TokenTape.prototype.prevMatches = function(opts) {
-    opts = opts || {};
-    opts.filterOut = opts.filterOut || {};
-    var string = opts.string || new RegExp(".*");
-    var type = opts.type || new RegExp(".*");
-    var filterString = opts.filterOut.string;
-    var filterType = opts.filterOut.type;
-    var copy = this.copy();
-    for(;;) {
-      var existsPrev = copy.prev();
-      var prev = copy.cur();
-      if (filterString && existsPrev && prev && prev.string.match(filterString)) {
-        continue;
-      } else if (filterType && existsPrev && prev && prev.type.match(filterType)) {
-        continue;
-      }
-      return (existsPrev && prev && prev.string.match(string) && prev.type.match(type));
-    }
-  };
-
-  /**
-   * Checks if the TokenTape is currently on a
-   * sub-keyword sequence as defined by SEQSUBKEYWORDS
-   * @param [opts]
-   * @returns {Object} A mapping of potential keyword matches, if any
-   */
-  TokenTape.prototype.checkSequence = function(opts) {
-    opts = opts || {};
-    var dir = opts.dir || 1;
-    var offset = opts.offset || 0;
-    var seqs = SEQSUBKEYWORDS;
-    if (opts.kw) {
-      var tmp = seqs[opts.kw];
-      seqs = {};
-      seqs[opts.kw] = tmp;
-    }
-    var copy = this.copy();
-    var criteria = {string: /[^\s]+/};
-    while (offset > 0) { copy.next(); offset--; }
-    while (offset < 0) { copy.prev(); offset++; }
-    var fstTok = (dir === 1) ? copy.findNext(criteria) : copy.findPrev(criteria);
-    var sndTok = (dir === 1) ? copy.findNext(criteria) : copy.findPrev(criteria);
-    if (!fstTok || FLAT_SEQ.indexOf(fstTok.string) === -1) return null;
-    if (!sndTok || FLAT_SEQ.indexOf(sndTok.string) === -1) return null;
-    if (!(fstTok.type === "keyword" && sndTok.type === "keyword")) return null;
-    if (dir != 1) {
-      var temp = sndTok;
-      sndTok = fstTok;
-      fstTok = temp;
-    }
-    function doCheck(seq) {
-      if (!Array.isArray(seq) || seq.length === 0) return null;
-      if (seq.length > 2) {
-        console.warn("Cannot have subkeyword sequences longer than length 2");
-        return null;
-      }
-      if (seq[0] === fstTok.string && seq[1] === sndTok.string) {
-        return {from: Pos(fstTok.line, fstTok.start), to: Pos(sndTok.line, sndTok.end)};
-      }
-      return null;
-    }
-    var collected = {};
-    var any = false;
-    Object.keys(SEQSUBKEYWORDS).forEach(function(key) {
-      var seqs = SEQSUBKEYWORDS[key];
-      seqs.forEach(function(seq) {
-        var res = doCheck(seq);
-        if (res) {
-          any = true;
-          collected[key] = collected[key] || [];
-          collected[key].push(res);
-        }
-      });
-    });
-    return any ? collected : null;
-  };
-
-  var elseIfFilter = {type: /keyword/, string: /else/,
-    filterOut: {string: /\s+/}};
-
   function IterResult(token, fail, subs) {
     this.token = token;
     this.fail = fail;
@@ -653,7 +531,6 @@
     var skip = 0;
     for (;;) {
       var prev = this.findPrev({type: /builtin|keyword/});
-      console.log(prev);
       if (!prev) return new IterResult(null, true);
       if (skip > 0) { skip--; continue; }
 
@@ -712,9 +589,12 @@
       if (isOpening(openKw)) {
         var startKw = Pos(openKw.line, openKw.end);
         if (openKw.string === 'fun') {
-          var tmp = tstream.copy().next();
-          if (tmp && tmp.type === 'function-name')
-            startKw = Pos(tmp.line, tmp.end);
+          var tmp = tstream.copy();
+          if (tmp.next()) {
+            var tmpkw = tmp.cur();
+            if (tmpkw && tmpkw.type === 'function-name')
+              startKw = Pos(tmp.line, tmp.end);
+          }
         }
         var close = tstream.findMatchingClose(openKw.string);
         return close && {from: startKw, to: close.token.from};
@@ -736,7 +616,6 @@
     if (!start || cmp(Pos(start.line, start.start), pos) > 0) return;
     var here = {from: Pos(start.line, start.start), to: Pos(start.line, start.end)};
     var other;
-    console.log(start);
     if (isClosing(start.string)) {
       //tstream.prev(); // Push back one word to line up correctly
       other = tstream.findMatchingOpen(start.string);
@@ -747,7 +626,7 @@
         return {open: parent.token, close: here, at: "open", matches: false, extra: []};
       }
       return CodeMirror.findMatchingKeyword(cm, Pos(parent.token.line, parent.token.start), range);
-    } else if (!tstream.checkSequence({offset: -2, dir: 1})) {
+    } else {
       other = tstream.findMatchingClose(start.string);
       return {open: here, close: other.token, at: "open", matches: !other.fail, extra: other.subs};
     }
