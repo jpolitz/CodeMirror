@@ -96,27 +96,6 @@
     INV_LASTSUBKEYWORDS[kw].push(key);
   });
 
-  // Utility Dictionary which is similar to INV_LASTSUBKEYWORDS,
-  // except that each subkeyword `s` maps to an array `a` of *subkeywords*.
-  // If any subkeyword `t` in `a` follows `s` at the same nesting level
-  // (in the same context, of course), then `t` cannot match to the parent
-  // keyword of `s` (i.e. `t` is implicitly said to be one nesting level
-  // higher).
-  // P.S. Good thing we're only dealing with tiny lists
-  var ILLEGAL_LATER_SIBLINGS = {};
-  Object.keys(INV_LASTSUBKEYWORDS).forEach(function(key){
-    ILLEGAL_LATER_SIBLINGS[key] = [];
-    var parents = INV_SIMPLESUBKEYWORDS[key];
-    if (!parents) throw new Error("Entries in LASTSUBKEYWORDS must also be in SIMPLESUBKEYWORDS");
-    parents.forEach(function(parent){
-      // NB: children == children of *parent* (so *siblings* of key)
-      var children = SIMPLESUBKEYWORDS[parent];
-      children.forEach(function(sibling){
-        ILLEGAL_LATER_SIBLINGS[key].push(sibling);
-      });
-    });
-  });
-
   /**
    * Checks the given text for whether it is an opening keyword
    * (Done textually...assumption is that the text originates from
