@@ -552,8 +552,8 @@
       // Reached beginning or end of file; no match
       if (!next) return new IterResult(null, failIfNoMatch, kw ? subs[kw] : []);
       // If next is a subkeyword, respond accordingly
-      var inv;
-      if (inv = INV_SIMPLESUBKEYWORDS[next.string]) {
+      var inv = INV_SIMPLESUBKEYWORDS[next.string];
+      if (inv && stackEmpty()) {
         var nextFrom = Pos(next.line, next.start);
         var nextTo = Pos(next.line, next.end);
         inv.forEach(function(key){
@@ -623,10 +623,9 @@
       if (!prev) return new IterResult(null, true);
       if (skip > 0) { skip--; continue; }
       var prevIsLast = Object.keys(INV_LASTSUBKEYWORDS).indexOf(prev.string) !== -1;
-      // Syntax Error: Forgot an "end"; move search up one nesting level
+      // Syntax Error
       if (stack.length === 0 && prevIsLast) {
-        stack.push(prev);
-        continue;
+        return new IterResult(null, true);
       }
       if (isClosing(prev)) {
         stack.push(prev);
