@@ -375,6 +375,10 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
     } else if (state.lastToken === "ask") {
       ls.deferedOpened.c++;
       ls.tokens.push("IFCOND");
+    } else if (state.lastToken === "if") {
+      ls.deferedOpened.fn++;
+      ls.tokens.push("IF");
+      ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "else if") {
       if (hasTop(ls.tokens, "IF")) {
         if (ls.curOpened.fn > 0) ls.curOpened.fn--;
@@ -383,10 +387,6 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
         ls.deferedOpened.fn++;
         ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
       }
-    } else if (state.lastToken === "if") {
-      ls.deferedOpened.fn++;
-      ls.tokens.push("IF");
-      ls.tokens.push("WANTCOLON", "NEEDSOMETHING");
     } else if (state.lastToken === "else") {
       if (hasTop(ls.tokens, "IF")) {
         if (ls.curOpened.fn > 0) ls.curOpened.fn--;

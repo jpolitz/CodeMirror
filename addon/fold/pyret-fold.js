@@ -8,6 +8,23 @@
 })(function(CodeMirror) {
   "use strict";
 
+  /*
+   * Logic for Keyword/Bracket Matching
+   */
+
+  /* =========== WARNING ============
+   * CodeMirror mangles 0 and 1-indexed
+   * values to a certain extent. CodeMirror.Pos
+   * (aliased as just "Pos") expects the
+   * character index to be 1-indexed, while
+   * token objects returned by methods such as
+   * cm.getTokenAt have `start` and `end` character
+   * indices which are 0-indexed. As such,
+   * some things in this file might look
+   * a little weird, but bear the above
+   * in mind before tweaking.
+   */
+
   var Pos = CodeMirror.Pos;
 
   /**
@@ -15,6 +32,11 @@
    */
   function cmp(a, b) { return a.line - b.line || a.ch - b.ch; }
 
+  /**
+   * Like cmp(...), but accepts two positions representing
+   * a range and returns the distance to the closest point
+   * of [a, b]. (If a <= c <= b, returns 0).
+   */
   function cmpClosest(a, b, c) {
     var ret = a.line - c.line
     if (ret) { return ret; }
@@ -23,51 +45,39 @@
     return b.ch - c.ch;
   }
 
-  var DELIMS;
-  var ENDDELIM;
-  var SPECIALDELIM;
-  var ALLDELIMS;
-  var delimrx;
+  var pyretMode = CodeMirror.getMode({},"pyret");
+  if (pyretMode.name === "null") {
+    throw Error("Pyret Mode not Defined");
+  } else if (!pyretMode.delimiters || // Make sure delimiters exist
+             !pyretMode.delimiters.opening ||      // and are valid
+             !pyretMode.delimiters.closing) {
+    throw Error("No correct delimiters defined in Pyret Mode");
+  }
+  // Opening Delimiter Tokens
+  var DELIMS = pyretMode.delimiters.opening;
+  // Closing Delimiter Tokents
+  var ENDDELIM = pyretMode.delimiters.closing;
+  // Tokens with closing tokens other than "end"
+  var SPECIALDELIM = [{start: "(", end: ")"},
+                      {start: "[", end: "]"},
+                      {start: "{", end: "}"}];
+  // Matches against any token text
+  var delimrx = new RegExp("(" + DELIMS.join("|") + "|" +
+                           ENDDELIM.join("|") + "|\\(|\\)|\\[|\\]|{|})", "g");
 
-
-  /**
-   * Kludge of the century...for some reason, defineInitHook doesn't
-   * run this before findMatchingKeyword runs (which it needs to).
-   * Thus, both defineInitHook and findMatchingKeyword are hooked
-   * up to this function, which basically deletes itself after one run.
-   */
-  var initHandler = function(cm) {
-    var pyretMode = cm.getDoc().getMode();
-    if (!pyretMode.delimiters) {
-      console.warn("Unable to find Pyret Delimiters");
-      // To keep things from completely blowing up
-      DELIMS = [];
-      ENDDELIM = [];
-    } else {
-      DELIMS = pyretMode.delimiters.opening;
-      ENDDELIM = pyretMode.delimiters.closing;
-    }
-    SPECIALDELIM = [{start: "(", end: ")"},
-      {start: "[", end: "]"},
-      {start: "{", end: "}"}];
-    ALLDELIMS = [].concat(DELIMS,ENDDELIM,"(",")","[","]","{","}");
-
-    delimrx = new RegExp("(" + DELIMS.join("|") + "|" +
-      ENDDELIM.join("|") + "|\\(|\\)|\\[|\\]|{|})", "g");
-    initHandler = function(){};
-  };
-
-  CodeMirror.defineInitHook(initHandler);
-
+  // Encapsulates parent->sub-keyword relationship
   var SIMPLESUBKEYWORDS = {
     "if": ["else if", "else"], "fun": ["where"],
     "data": ["sharing", "where"], "method": ["where"]
   };
 
-  var SEQSUBKEYWORDS = {
-    "if": [["else", "if"]]
+  // Represents subkeywords which cannot be followed
+  // by any other keywords
+  var LASTSUBKEYWORDS = {
+    "if": "else"
   };
 
+  // Like SIMPLESUBKEYWORDS, but goes from sub-keyword->parent
   var INV_SIMPLESUBKEYWORDS = {};
   Object.keys(SIMPLESUBKEYWORDS).forEach(function(key){
     var arr = SIMPLESUBKEYWORDS[key];
@@ -77,11 +87,34 @@
     });
   });
 
-  var FLAT_SEQ = [];
-  Object.keys(SEQSUBKEYWORDS).forEach(function(k) {
-    var tmp = [];
-    SEQSUBKEYWORDS[k].forEach(function(arr){tmp = tmp.concat(arr);});
-    FLAT_SEQ = FLAT_SEQ.concat(tmp);
+  // Inverse mapping from LASTSUBKEYWORDS
+  var INV_LASTSUBKEYWORDS = {};
+  Object.keys(LASTSUBKEYWORDS).forEach(function(key){
+    var kw = LASTSUBKEYWORDS[key];
+    // Needs to be an array since mapping is (potentially) non-bijective
+    INV_LASTSUBKEYWORDS[kw] = INV_LASTSUBKEYWORDS[kw] || [];
+    INV_LASTSUBKEYWORDS[kw].push(key);
+  });
+
+  // Utility Dictionary which is similar to INV_LASTSUBKEYWORDS,
+  // except that each subkeyword `s` maps to an array `a` of *subkeywords*.
+  // If any subkeyword `t` in `a` follows `s` at the same nesting level
+  // (in the same context, of course), then `t` cannot match to the parent
+  // keyword of `s` (i.e. `t` is implicitly said to be one nesting level
+  // higher).
+  // P.S. Good thing we're only dealing with tiny lists
+  var ILLEGAL_LATER_SIBLINGS = {};
+  Object.keys(INV_LASTSUBKEYWORDS).forEach(function(key){
+    ILLEGAL_LATER_SIBLINGS[key] = [];
+    var parents = INV_SIMPLESUBKEYWORDS[key];
+    if (!parents) throw new Error("Entries in LASTSUBKEYWORDS must also be in SIMPLESUBKEYWORDS");
+    parents.forEach(function(parent){
+      // NB: children == children of *parent* (so *siblings* of key)
+      var children = SIMPLESUBKEYWORDS[parent];
+      children.forEach(function(sibling){
+        ILLEGAL_LATER_SIBLINGS[key].push(sibling);
+      });
+    });
   });
 
   /**
@@ -408,10 +441,10 @@
    */
   TokenTape.prototype.findNext = function(opts) {
     opts = opts || {};
-    var string = opts.string || new RegExp(".*");
+    var tokContents = opts.string || new RegExp(".*");
     var type = opts.type || new RegExp(".*");
     function matches(tok) {
-      return tok.string.match(string) && tok.type && tok.type.match(type);
+      return tok.string.match(tokContents) && tok.type && tok.type.match(type);
     }
     if (opts.cur) {
       var tok = this.cur();
@@ -433,30 +466,29 @@
    */
   TokenTape.prototype.findPrev = function(opts) {
     opts = opts || {};
-    var string = opts.string || new RegExp(".*");
+    var tokContents = opts.string || new RegExp(".*");
     var type = opts.type || new RegExp(".*");
     var prev;
     while(prev = this.prev()) {
       var tok = this.cur();
-      if (tok.string.match(string) && tok.type && tok.type.match(type)) return tok;
+      if (tok.string.match(tokContents) && tok.type && tok.type.match(type)) return tok;
     }
     return null;
   };
 
   /**
-   * Like findNext, but looks at only the immediately 
-   * next and current tokens (used in findMatchingKeyword to
+   * Like {@link TokenTape.prototype.findNext}, but looks at only the immediately 
+   * next and current tokens (used in {@link CodeMirror.findMatchingKeyword} to
    * determine starting token)
-   * NOTE: Favors tokens on the right of cursor
+   * NOTE: Favors tokens on the left of cursor
+   * @param {Object} [opts] The search criteria ( uses opts.string and opts.type )
+   * @returns {Object} The matching token, if any
    */
   TokenTape.prototype.findAdjacent = function(opts) {
     opts = opts || {};
-    var string = opts.string || new RegExp(".*");
-    var type = opts.type || new RegExp(".*");
     var startPos = opts.pos || Pos(this.line, this.current.start + 1);
     var matches = function(tok) {
       if (!tok) { return false; }
-      //var meetsCriteria =  tok.string.match(string) && tok.type && tok.type.match(type);
       var diff = cmpClosest(Pos(tok.line, tok.start), Pos(tok.line, tok.end), startPos);
       var sameLine = tok.line === startPos.line;
       var adjacent = sameLine && diff === 0;
@@ -474,46 +506,103 @@
     return null;
   };
 
-  function IterResult(token, fail, subs) {
+  function IterResult(token, fail, subs, badSubs) {
     this.token = token;
     this.fail = fail;
     this.subs = subs || [];
+    this.badSubs = badSubs || [];
   }
 
   /**
-   * Finds the closing keyword which matches the
-   * token at the current position
-   *
+   * Finds the keyword which matches the opening
+   * or closing token at the current position (depending on
+   * the direction being travelled)
    * @param {string} [kw] - The keyword to match
-   * @returns {IterResult} The resulting matched closing keyword
+   * @param {int} [dir] - The direction to travel (-1 = Backward, 1 = Forward)
+   * @returns {IterResult} The resulting matched opening keyword
    */
-  TokenTape.prototype.findMatchingClose = function(kw) {
+  TokenTape.prototype.findMatchingToken = function(kw, dir) {
+    if (Math.abs(dir) !== 1)
+      throw new Error("Invalid Direction Given to findMatchingToken: " + dir.toString());
+    var forward = dir === 1;
     var stack = [];
+    // kw => matched subkeywords
     var subs = {};
-    var skip = 0;
-    for (;;) {
-      var next = this.findNext({type: /builtin|keyword/});
-      if (!next) return new IterResult(null, false, kw ? subs[kw] : []);
-      if (skip > 0) { skip--; continue; }
-      if (stack.length === 0 && INV_SIMPLESUBKEYWORDS[next.string]) {
-        INV_SIMPLESUBKEYWORDS[next.string].forEach(function(key) {
-          subs[key] = subs[key] || [];
-          subs[key].push({from: Pos(next.line, next.start), to: Pos(next.line, next.end)});
+    // Array of keywords for which the
+    // last subkeywords have already been found
+    var lastFound = [];
+    // kw => matched subkeywords that don't belong
+    var badSubs = {};
+    // Directionally-based behavior:
+    var nextMatching = (forward ? this.findNext : this.findPrev).bind(this);
+    var isDeeper = forward ? isOpening : isClosing;
+    var isShallower = forward ? isClosing : isOpening;
+    var stackEmpty = function(){ return stack.length === 0; };
+    var toksMatch = function(tok){ return forward ? keyMatches(kw, tok) : keyMatches(tok, kw); };
+    // Keeps `fun` from glowing red
+    var failIfNoMatch = !forward;
+    function dealWithAfterLast(tok, parent) {
+      var toAdd = {from: Pos(tok.line, tok.start), to: Pos(tok.line, tok.end)}
+      // If forward, the new subkeyword is just bad
+      if (forward) {
+        badSubs[parent] = badSubs[parent] || [];
+        badSubs[parent].push(toAdd);
+        return;
+      }
+      // We're going backward; if it's not a last subkeyword,
+      // just add it; we're in good shape.
+      var invLast = INV_LASTSUBKEYWORDS[tok.string] || [];
+      if (invLast.indexOf(parent) === -1) {
+        subs[parent] = subs[parent] || [];
+        subs[parent].push(toAdd);
+        return;
+      }
+      // Last subkeyword token found. Move the tokens
+      // for the parent from subs to badsubs since
+      // we found a last child
+      if (subs[parent]) {
+        badSubs[parent] = badSubs[parent] || [];
+        subs[parent].forEach(function(child){
+          badSubs[parent].push(child);
         });
       }
-      if (isClosing(next)) {
-        if (stack.length === 0) {
+      subs[parent] = [toAdd];
+    }
+    for (;;) {
+      var next = nextMatching({type: /builtin|keyword/});
+      // Reached beginning or end of file; no match
+      if (!next) return new IterResult(null, failIfNoMatch, kw ? subs[kw] : []);
+      // If next is a subkeyword, respond accordingly
+      var inv;
+      if (inv = INV_SIMPLESUBKEYWORDS[next.string]) {
+        var nextFrom = Pos(next.line, next.start);
+        var nextTo = Pos(next.line, next.end);
+        inv.forEach(function(key){
+          if (lastFound.indexOf(key) !== -1) {
+            dealWithAfterLast(next, key);
+          } else {
+            if (LASTSUBKEYWORDS[key] === next.string)
+              lastFound.push(key);
+            subs[key] = subs[key] || [];
+            subs[key].push({from: nextFrom, to: nextTo});
+          }
+        });
+      }
+      // Need to remove stack layer?
+      if (isShallower(next)) {
+        // If stack is empty, we've matched
+        if (stackEmpty()) {
           var tok = {keyword: next,
-            from: Pos(next.line, next.start),
-            to: Pos(next.line, next.end)};
-          var fail = !(!kw || keyMatches(kw, next));
-          return new IterResult(tok, fail, (fail || !kw) ? [] : subs[kw]);
-        } else {
+                     from: Pos(next.line, next.start),
+                     to: Pos(next.line, next.end)};
+          var fail = !(!kw || toksMatch(next));
+          return new IterResult(tok, fail,
+                                fail ? [] : (forward ? subs[kw] : subs[next.string]),
+                                forward ? badSubs[kw] : badSubs[next.string]);
+        } else { // Otherwise, remove the layer
           stack.pop();
         }
-      } else if (next.string === "if") {
-        stack.push(next);
-      } else if (isOpening(next)) {
+      } else if (isDeeper(next)) { // Need to add layer to stack?
         stack.push(next);
       }
     }
@@ -526,37 +615,23 @@
    * @returns {IterResult} The resulting matched opening keyword
    */
   TokenTape.prototype.findMatchingOpen = function(kw) {
-    var stack = [];
-    var subs = {};
-    var skip = 0;
-    for (;;) {
-      var prev = this.findPrev({type: /builtin|keyword/});
-      if (!prev) return new IterResult(null, true);
-      if (skip > 0) { skip--; continue; }
-
-      
-      if (stack.length === 0 && INV_SIMPLESUBKEYWORDS[prev.string]) {
-        INV_SIMPLESUBKEYWORDS[prev.string].forEach(function(key) {
-          subs[key] = subs[key] || [];
-          subs[key].push({from: Pos(prev.line, prev.start), to: Pos(prev.line, prev.end)});
-        });
-      }
-      if (isClosing(prev)) {
-        stack.push(prev);
-      } else if (isOpening(prev)) {
-        if (stack.length === 0) {
-          var tok = { keyword: prev.string,
-            from: Pos(prev.line, prev.start),
-            to: Pos(prev.line, prev.end) };
-          var fail = !(!kw || keyMatches(prev, kw));
-          return new IterResult(tok, fail, (fail || !kw) ? [] : subs[prev.string]);
-        }
-        // Stack is nonempty
-        stack.pop();
-      }
-    }
+    return this.findMatchingToken(kw, -1);
+  };
+  /**
+   * Finds the opening keyword which matches the
+   * token at the current position
+   * @param {string} [kw] - The keyword to match
+   * @returns {IterResult} The resulting matched opening keyword
+   */
+  TokenTape.prototype.findMatchingClose = function(kw) {
+    return this.findMatchingToken(kw, 1);
   };
 
+  /**
+   * Returns the parent token which matches with the given subtoken
+   * (e.g. goes from "else if" to its matching "if")
+   * @returns {IterResult} The matching parent token, if any
+   */
   TokenTape.prototype.findMatchingParent = function(kw) {
     var stack = [];
     var skip = 0;
@@ -568,6 +643,12 @@
       var prev = this.findPrev({type: /builtin|keyword/});
       if (!prev) return new IterResult(null, true);
       if (skip > 0) { skip--; continue; }
+      var prevIsLast = Object.keys(INV_LASTSUBKEYWORDS).indexOf(prev.string) !== -1;
+      // Syntax Error: Forgot an "end"; move search up one nesting level
+      if (stack.length === 0 && prevIsLast) {
+        stack.push(prev);
+        continue;
+      }
       if (isClosing(prev)) {
         stack.push(prev);
       } else if (stack.length === 0 && parents.indexOf(prev.string) != -1) {
@@ -581,37 +662,67 @@
     }
   };
 
+  /**
+   * Returns folding region information to CodeMirror
+   */
   CodeMirror.registerHelper("fold", "pyret", function(cm, start) {
     var tstream = new TokenTape(cm, start.line, 0);
-    for (;;) {
-      var openKw = tstream.findNext({type: /keyword|builtin/, string: delimrx});
-      if (!openKw) return;
-      if (isOpening(openKw)) {
-        var startKw = Pos(openKw.line, openKw.end);
-        if (openKw.string === 'fun') {
-          var tmp = tstream.copy();
-          if (tmp.next()) {
-            var tmpkw = tmp.cur();
-            if (tmpkw && tmpkw.type === 'function-name')
-              startKw = Pos(tmp.line, tmp.end);
+    function getOpenPos(tok) {
+      if (tok.string === "fun") {
+        var tmp = tstream.copy();
+        if (tmp.next()) {
+          var tmpkw = tmp.cur();
+          if (tmpkw && tmpkw.type === "function-name") {
+            var last = Pos(tmpkw.line, tmpkw.end);
+            var newLast;
+            while (tmp.next()) {
+              tmpkw = tmp.cur();
+              if (tmpkw.line !== last.line)
+                break;
+              newLast = Pos(tmpkw.line, tmpkw.end);
+              if (tmpkw.string === ":" && tmpkw.type === "builtin")
+                return newLast;
+            }
+            return last;
           }
         }
-        var close = tstream.findMatchingClose(openKw.string);
-        return close && {from: startKw, to: close.token.from};
       }
+      return Pos(tok.line, tok.end);
+    }
+    // If keyword is at the very beginning of the line,
+    // findNext won't match it, so we manually do the first check.
+    var openKw = tstream.cur();
+    if (!openKw || !openKw.type || !openKw.type.match(/keyword|builtin/))
+      openKw = tstream.findNext({type: /keyword|builtin/, string: delimrx});
+    else // getOpenPos won't line up correctly otherwise
+      tstream.next();
+    for (;;) {
+      if (isOpening(openKw)) {
+        var startKw = getOpenPos(openKw);
+        var close = tstream.findMatchingClose(openKw.string);
+        return close && close.token && {from: startKw, to: close.token.from};
+      }
+      openKw = tstream.findNext({type: /keyword|builtin/, string: delimrx});
+      if (!openKw || openKw.line !== start.line) return;
     }
   });
 
+  /**
+   * Returns keyword-matching information to matchkw.js
+   */
   CodeMirror.findMatchingKeyword = function(cm, pos, range) {
-    initHandler(cm);
     // No special words on the current line
     var tstream = new TokenTape(cm, pos.line, pos.ch, range);
-    var start = tstream.findAdjacent({type: /keyword|builtin/, string: delimrx, pos: pos});
+    var start = tstream.findAdjacent({type: /keyword|builtin/,
+                                      string: delimrx,
+                                      pos: pos});
     // Putting these three keywords in the delimrx regular expression breaks
     // invariants elsewhere...they are subkeywords, so kept separate
     if (!start) {
       tstream = new TokenTape(cm, pos.line, pos.ch, range);
-      start = tstream.findAdjacent({type: /keyword|builtin/, string: /else|where|sharing/, pos: pos});
+      start = tstream.findAdjacent({type: /keyword|builtin/,
+                                    string: /else|where|sharing/,
+                                    pos: pos});
     }
     if (!start || cmp(Pos(start.line, start.start), pos) > 0) return;
     var here = {from: Pos(start.line, start.start), to: Pos(start.line, start.end)};
@@ -619,27 +730,34 @@
     if (isClosing(start.string)) {
       //tstream.prev(); // Push back one word to line up correctly
       other = tstream.findMatchingOpen(start.string);
-      return {open: other.token, close: here, at: "close", matches: !other.fail, extra: other.subs};
+      return {open: other.token,
+              close: here,
+              at: "close",
+              matches: !other.fail,
+              extra: other.subs,
+              extraBad: other.badSubs};
     } else if (Object.keys(INV_SIMPLESUBKEYWORDS).indexOf(start.string) != -1) {
-      parent = tstream.findMatchingParent(start.string);
+      // It's a subkeyword; find its parent
+      var parent = tstream.findMatchingParent(start.string);
       if (parent.fail) {
-        return {open: parent.token, close: here, at: "open", matches: false, extra: []};
+        return {open: parent.token,
+                close: here,
+                at: "close",
+                matches: false,
+                extra: [],
+                extraBad: parent.badSubs};
       }
-      return CodeMirror.findMatchingKeyword(cm, Pos(parent.token.line, parent.token.start), range);
+      return CodeMirror.findMatchingKeyword(cm,
+                                            Pos(parent.token.line, parent.token.start),
+                                            range);
     } else {
       other = tstream.findMatchingClose(start.string);
-      return {open: here, close: other.token, at: "open", matches: !other.fail, extra: other.subs};
-    }
-  };
-
-  CodeMirror.findEnclosingKeyword = function(cm, pos, range) {
-    var tstream = new TokenTape(cm, pos.line, pos.ch, range);
-    for (;;) {
-      var open = tstream.findMatchingOpen(null).token;
-      if (!open) break;
-      var close = tstream.findMatchingClose(open.keyword);
-      if (close && close.token) return {open: open, close: close.token,
-        matches: !close.fail, extra: close.subs};
+      return {open: here,
+              close: other.token,
+              at: "open",
+              matches: !other.fail,
+              extra: other.subs,
+              extraBad: other.badSubs};
     }
   };
 });

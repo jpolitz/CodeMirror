@@ -42,12 +42,20 @@
       if (!match) return;
       var hit = match.at == "open" ? match.open : match.close;
       var other = match.at == "close" ? match.open : match.close;
-      var wordStyle = match.matches ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket";
+      var wordStyle; // = match.matches ? "CodeMirror-matchingbracket" : "CodeMirror-nonmatchingbracket";
+      if (match.matches) {
+        wordStyle = other ? "CodeMirror-matchingbracket" : "CodeMirror-pyret-no-match-start";
+      } else {
+        wordStyle = other ? "CodeMirror-nonmatchingbracket" : "CodeMirror-pyret-no-match-end";
+      }
       var regionStyle = wordStyle + "-region";
       cm.state.failedKeywordMatch = !match.matches;
       cm.state.keywordMarks.push(cm.markText(hit.from, hit.to, {className: wordStyle}));
       match.extra.forEach(function(tok){
         cm.state.keywordMarks.push(cm.markText(tok.from, tok.to, {className: wordStyle}));
+      });
+      match.extraBad.forEach(function(tok){
+        cm.state.keywordMarks.push(cm.markText(tok.from, tok.to, {className: "CodeMirror-nonmatchingbracket"}));
       });
       if (other) {
         cm.state.keywordMarks.push(cm.markText(other.from, other.to, {className: wordStyle}));
