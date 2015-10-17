@@ -91,7 +91,7 @@
   var INV_LASTSUBKEYWORDS = {};
   Object.keys(LASTSUBKEYWORDS).forEach(function(key){
     var kw = LASTSUBKEYWORDS[key];
-    // Needs to be an array since mapping is (potentially) non-bijective
+    // Needs to be an array since mapping is (potentially) non-injective
     INV_LASTSUBKEYWORDS[kw] = INV_LASTSUBKEYWORDS[kw] || [];
     INV_LASTSUBKEYWORDS[kw].push(key);
   });
