@@ -100,11 +100,11 @@
    * Checks the given text for whether it is an opening keyword
    * (Done textually...assumption is that the text originates from
    * a keyword or builtin token type)
-   * @param {string} text - The text to check
+   * @param {token} text - The text to check
    * @returns {boolean} Whether the given text is an opening delimiter
    */
   function isOpening(text) {
-    text = (typeof(text) === 'string') ? text : text.string;
+    text = text.string;
     if (DELIMS.indexOf(text) != -1) {
       return true;
     }
@@ -118,11 +118,11 @@
    * Checks the given text for whether it is a closing keyword
    * (Done textually...assumption is that the text originates from
    * a keyword or builtin token type)
-   * @param {string} text - The text to check
+   * @param {token} text - The text to check
    * @returns {boolean} Whether the given text is a closing delimiter
    */
   function isClosing(text) {
-    text = (typeof(text) === 'string') ? text : text.string;
+    text = text.string;
     if (ENDDELIM.indexOf(text) != -1) {
       return true;
     }
@@ -705,7 +705,7 @@
     if (!start || cmp(Pos(start.line, start.start), pos) > 0) return;
     var here = {from: Pos(start.line, start.start), to: Pos(start.line, start.end)};
     var other;
-    if (isClosing(start.string)) {
+    if (isClosing(start)) {
       //tstream.prev(); // Push back one word to line up correctly
       other = tstream.findMatchingOpen(start.string);
       return {open: other.token,
