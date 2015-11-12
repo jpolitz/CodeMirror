@@ -5,6 +5,12 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   }
   
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
+  // Keywords which usually precede named function definitions
+  const pyret_prefix_keywords = ["fun", "method"];
+  // Keywords in builtins which can have children that are
+  // functions with no prefixes (as defined in pyret_prefix_keywords)
+  const pyret_noprefix_parent_keywords = ["data"];
+  const pyret_noprefix_parent_builtins = ["{"];
   const pyret_closing_keywords = ["end"];
   const pyret_opening_keywords_colon = ["try", "ask", "ref-graph", "block"];
   const pyret_opening_keywords = pyret_opening_keywords_colon.concat(
@@ -708,7 +714,11 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     fold: "pyret",
 
-    delimiters: {opening: pyret_opening_keywords, closing: pyret_closing_keywords}
+    delimiters: {opening: pyret_opening_keywords,
+                 closing: pyret_closing_keywords,
+                 prefix_info: {prefixes: pyret_prefix_keywords,
+                               parent_keywords: pyret_noprefix_parent_keywords,
+                               parent_builtins: pyret_noprefix_parent_builtins}},
 
   };
   return external;
