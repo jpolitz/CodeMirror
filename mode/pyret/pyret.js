@@ -13,13 +13,13 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   const pyret_noprefix_parent_builtins = ["{"];
   const pyret_closing_keywords = ["end"];
   const pyret_opening_keywords_colon = ["try", "ask", "ref-graph", "block"];
-  const pyret_opening_keywords = pyret_opening_keywords_colon.concat(
-                                  ["fun", "when", "for", "if", "let",
-                                  "cases", "data", "shared", "check",
-                                  "except", "letrec", "lam", "method",
-                                  "examples"]);
+  const pyret_opening_keywords_nocolon = ["fun", "when", "for", "if", "let",
+                                          "cases", "data", "shared", "check",
+                                          "except", "letrec", "lam", "method",
+                                          "examples"];
+  const pyret_opening_keywords = pyret_opening_keywords_colon.concat(pyret_opening_keywords_nocolon);
   const pyret_keywords = 
-    wordRegexp(["else if"].concat(pyret_opening_keywords, pyret_closing_keywords,
+    wordRegexp(["else if"].concat(pyret_opening_keywords_nocolon, pyret_closing_keywords,
                ["var", "rec", "import", "include", "provide", "type", "newtype",
                 "from", "lazy", "shadow", "ref",
                 "and", "or", "as", "else", "cases", "is==", "is=~", "is<=>", "is", "satisfies", "raises",
