@@ -50,11 +50,7 @@
     throw Error("Pyret Mode not Defined");
   } else if (!pyretMode.delimiters || // Make sure delimiters exist
              !pyretMode.delimiters.opening ||      // and are valid
-             !pyretMode.delimiters.closing ||
-             !pyretMode.delimiters.prefix_info ||      // Also check function prefix
-             !pyretMode.delimiters.prefix_info.prefixes || // information is defined
-             !pyretMode.delimiters.prefix_info.parent_keywords ||
-             !pyretMode.delimiters.prefix_info.parent_builtins) {
+             !pyretMode.delimiters.closing) {
     throw Error("No correct delimiters defined in Pyret Mode");
   }
   // Opening Delimiter Tokens
@@ -72,7 +68,7 @@
   // Encapsulates parent->sub-keyword relationship
   var SIMPLESUBKEYWORDS = {
     "if": ["else if", "else"], "fun": ["where"],
-    "data": ["with", "sharing", "where"], "method": ["where"]
+    "data": ["sharing", "where"], "method": ["where"]
   };
 
   // Represents subkeywords which cannot be followed
@@ -99,23 +95,6 @@
     INV_LASTSUBKEYWORDS[kw] = INV_LASTSUBKEYWORDS[kw] || [];
     INV_LASTSUBKEYWORDS[kw].push(key);
   });
-
-  // NOPFX_PROC_PARENTS and PREFIXES are constants for
-  // use in isPrefixlessParent(...) and isPrefix(...)
-  // (see documentation for those for further details)
-  var PFX_INFO = pyretMode.delimiters.prefix_info;
-  var NOPFX_PROC_PARENTS = [];
-  for (var i = 0; i < PFX_INFO.parent_keywords.length; i++) {
-    NOPFX_PROC_PARENTS.push({string: PFX_INFO.parent_keywords[i], type: 'keyword'});
-  }
-  for (var i = 0; i < PFX_INFO.parent_builtins.length; i++) {
-    NOPFX_PROC_PARENTS.push({string: PFX_INFO.parent_builtins[i], type: 'builtin'});
-  }
-
-  var PREFIXES = [];
-  for (var i = 0; i < PFX_INFO.prefixes.length; i++) {
-    PREFIXES.push({string: PFX_INFO.prefixes[i], type: 'keyword'});
-  }
 
   /**
    * Checks the given text for whether it is an opening keyword
@@ -151,49 +130,6 @@
       if (text === SPECIALDELIM[i].end) return true;
     }
     return false;
-  }
-
-  /**
-   * Checks if the given token matches any of the
-   * criteria in the given array
-   * @param {token} toCheck - The token being checked
-   * @param {Array<Object>} arr - The criteria to check against
-   * @returns {boolean} Whether the given token matches any of the given criteria
-   */
-  function matchesAny(toCheck, arr) {
-    var idx = 0;
-    for (; idx < arr.length; idx++) {
-      // What's currently being checked
-      var criteria = arr[idx];
-      // Continue if criteria has text different from toCheck
-      if (criteria.string && !(criteria.string === toCheck.string))
-        continue;
-      // Continue if criteria has type different from toCheck
-      if (criteria.type && !(criteria.type === toCheck.type))
-        continue;
-      // toCheck meets all requirements, so return true
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Checks if the given token can have children functions
-   * which do not have `fun` or `method` prefixes.
-   * @param {token} toCheck - The token being checked
-   * @returns {boolean} Whether toCheck can have prefix-less function children
-   */
-  function isPrefixlessParent(toCheck) {
-    return matchesAny(toCheck, NOPFX_PROC_PARENTS);
-  }
-
-  /**
-   * Checks if the given token is a function prefix
-   * @param {token} toCheck - The token being checked
-   * @returns {boolean} Whether toCheck is a function prefix
-   */
-  function isPrefix(toCheck) {
-    return matchesAny(toCheck, PREFIXES);
   }
 
   /**
@@ -287,7 +223,7 @@
     }
     return {index: idx, needle: word};
   }
-
+  
   /**
    * Encapsulates an iterator over the CodeMirror instance's body
    * @param {CodeMirror} cm - The CodeMirror instance
@@ -437,9 +373,10 @@
    * @returns {Object} The next token in the stream
    */
   TokenTape.prototype.peekNext = function() {
-    var copy = this.copy();
-    var isNext = copy.next();
-    return isNext ? copy.cur() : null;
+    if (this.current.end === null) return null;
+    var tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+    tok.line = this.line;
+    return tok;
   };
 
   /**
@@ -455,9 +392,24 @@
    * @returns {Object} The previous token in the stream
    */
   TokenTape.prototype.peekPrev = function() {
-    var copy = this.copy();
-    var isPrev = copy.prev();
-    return isPrev ? copy.cur() : null;
+    if (this.current.start === null) return null;
+    var curLine = this.line;
+    var curCurrent = this.current;
+    var tok;
+    if (this.current.start === 0) {
+      if (!this.prevLine()) {
+        tok = null;
+      } else {
+        tok = this.cm.getTokenAt(Pos(this.line, this.current.start + 1));
+        tok.line = this.line;
+      }
+    } else {
+      tok = this.cm.getTokenAt(Pos(this.line, this.current.start));
+      tok.line = this.line;
+    }
+    this.line = curLine;
+    this.current = curCurrent;
+    return tok;
   };
 
   /**
@@ -504,7 +456,7 @@
   };
 
   /**
-   * Like {@link TokenTape.prototype.findNext}, but looks at only the immediately
+   * Like {@link TokenTape.prototype.findNext}, but looks at only the immediately 
    * next and current tokens (used in {@link CodeMirror.findMatchingKeyword} to
    * determine starting token)
    * NOTE: Favors tokens on the left of cursor
@@ -533,64 +485,6 @@
     return null;
   };
 
-  var DefEnum = {NONE : false, PREFIXED : 'PREFIXED', UNPREFIXED : 'UNPREFIXED'};
-  /**
-   * Returns true if the TokenTape is currently on top
-   * of a function definition's function-name (does not require `fun` or
-   * `method` prefixes)
-   * @returns {DefEnum} Whether the TokenTape is on top of a
-   *   function definition (PREFIXED === `fun` or `method` in
-   *   front of definition)
-   */
-  TokenTape.prototype.onDefinition = function() {
-    var cur = this.cur();
-    if (!cur || (cur.type !== 'function-name'))
-      return false;
-    var copy = this.copy();
-    var hasPrefix = isPrefix(copy.peekPrev());
-    var next = copy.next();
-    if (!next)
-      return false;
-    cur = copy.cur();
-    if (!cur || (cur.type !== 'builtin') || (cur.string !== '(') || !copy.next())
-      return false;
-    var depth = 1;
-    // Match parentheses
-    while (depth > 0) {
-      cur = copy.cur();
-      if (!cur)
-        return false;
-      if (cur.type !== 'builtin') {
-        copy.next();
-        continue;
-      }
-      switch (cur.string) {
-      case '(': depth++; break;
-      case ')': depth--; break;
-      default: break;
-      }
-      if (!copy.next())
-        return false;
-    }
-    // After this loop, we should be at a colon, if there is one
-    cur = copy.cur();
-    if (!cur || cur.type !== 'builtin')
-      return false;
-    if (cur.string === '->') {// Type annotation
-      copy.next();
-      cur = copy.cur();
-      if (!cur || cur.type !== 'variable')
-        return false;
-      copy.next();
-      cur = copy.cur();
-      if (!cur || cur.type !== 'builtin')
-        return false;
-    }
-    if (cur.string !== ':')
-      return false;
-    return hasPrefix ? DefEnum.PREFIXED : DefEnum.UNPREFIXED;
-  }
-
   function IterResult(token, fail, subs, badSubs) {
     this.token = token;
     this.fail = fail;
@@ -602,15 +496,13 @@
    * Finds the keyword which matches the opening
    * or closing token at the current position (depending on
    * the direction being travelled)
-   * @param {token} [kw] - The keyword to match
+   * @param {string} [kw] - The keyword to match
    * @param {int} [dir] - The direction to travel (-1 = Backward, 1 = Forward)
    * @returns {IterResult} The resulting matched opening keyword
    */
   TokenTape.prototype.findMatchingToken = function(kw, dir) {
     if (Math.abs(dir) !== 1)
       throw new Error("Invalid Direction Given to findMatchingToken: " + dir.toString());
-    var kwType = kw.type;
-    kw = kw.string;
     var forward = dir === 1;
     var stack = [];
     // kw => matched subkeywords
@@ -626,13 +518,6 @@
     var isShallower = forward ? isClosing : isOpening;
     var stackEmpty = function(){ return stack.length === 0; };
     var toksMatch = function(tok){ return forward ? keyMatches(kw, tok) : keyMatches(tok, kw); };
-    // Prefix-less functions
-    var pfxlessFuns = [];
-    // Prefix-less function stack depth (1 if backwards, since `end` will add a layer)
-    var pfxlessDepth = forward ? 0 : 1;
-    // Utility checker function for pfxlessDepth stack depth
-    // (Checks for depth 0 if forwards and for depths 1 and 0 backwards)
-    var atPfxlessDepth = function(){ return stack.length === pfxlessDepth || stackEmpty(); };
     // Keeps `fun` from glowing red
     var failIfNoMatch = !forward;
     function dealWithAfterLast(tok, parent) {
@@ -662,73 +547,15 @@
       }
       subs[parent] = [toAdd];
     }
-    // Wraps `next` as the matched result and returns
-    function wrapAndReturn(next) {
-      var tok = {keyword: next,
-                 from: Pos(next.line, next.start),
-                 to: Pos(next.line, next.end)};
-      var fail = !(!kw || toksMatch(next)
-                   || (kwType === 'function-name' && keyMatches('fun',next))
-                   || (next.type === 'function-name' && toksMatch('fun')));
-      var outSubs = (fail ? [] : (forward ? subs[kw] : subs[next.string])) || [];
-      var outBadSubs = (forward ? badSubs[kw] : badSubs[next.string]) || [];
-      if (pfxlessFuns.length !== 0) {
-        if (isPrefixlessParent(forward ? {string: kw, type: kwType} : next))
-          // Commenting this out for now, since, after testing it, it looks weird.
-          // Uncommenting will highlight method names under `data` and object
-          // expressions, but type names and non-method keys (respectively) will
-          // *not* be highlighted. The inconsistency looks weird, and the alternative
-          // of highlighting those as well would, in my opinion, highlight too many
-          // things.
-          outSubs = outSubs; //.concat(pfxlessFuns);
-        else
-          outBadSubs = outBadSubs.concat(pfxlessFuns);
-      }
-      return new IterResult(tok, fail, outSubs, outBadSubs);
-    }
     for (;;) {
-      var next = nextMatching({type: /builtin|keyword|function-name/});
+      var next = nextMatching({type: /builtin|keyword/});
       // Reached beginning or end of file; no match
-      if (!next) {
-        var outSubs = (kw ? subs[kw] : []) || [];
-        var outBadSubs = (kw ? badSubs[kw] : []) || [];
-        if (forward) {
-          if (isPrefixlessParent({string: kw, type: kwType}))
-            // See comment above
-            outSubs = outSubs; //.concat(pfxlessFuns);
-          else
-            outBadSubs = outBadSubs.concat(pfxlessFuns);
-        }
-        return new IterResult(null, failIfNoMatch, outSubs, outBadSubs);
-      }
-      // Store locations in case of subtoken
-      var nextFrom = Pos(next.line, next.start);
-      var nextTo = Pos(next.line, next.end);
-      // Deal with prefix-less function names
-      if (next.type === 'function-name') {
-        // Check if on function definition
-        var onDef = this.onDefinition();
-        // Want to call atPfxlessDepth before playing with the stack
-        var atDepth = atPfxlessDepth();
-        // Ignore if function is prefixed
-        if (onDef === DefEnum.NONE || onDef === DefEnum.PREFIXED)
-          continue;
-        // We know this function is an unprefixed definition
-        if (forward) {
-          stack.push(next);
-        } else {
-          if (stackEmpty())
-            return wrapAndReturn(next);
-          stack.pop();
-        }
-        // If at correct stack depth, add to potential children
-        if (atDepth)
-          pfxlessFuns.push({from: nextFrom, to: nextTo});
-        continue;
-      }
+      if (!next) return new IterResult(null, failIfNoMatch, kw ? subs[kw] : []);
       // If next is a subkeyword, respond accordingly
       var inv = INV_SIMPLESUBKEYWORDS[next.string];
       if (inv && stackEmpty()) {
+        var nextFrom = Pos(next.line, next.start);
+        var nextTo = Pos(next.line, next.end);
         inv.forEach(function(key){
           if (lastFound.indexOf(key) !== -1) {
             dealWithAfterLast(next, key);
@@ -744,7 +571,13 @@
       if (isShallower(next)) {
         // If stack is empty, we've matched
         if (stackEmpty()) {
-          return wrapAndReturn(next);
+          var tok = {keyword: next,
+                     from: Pos(next.line, next.start),
+                     to: Pos(next.line, next.end)};
+          var fail = !(!kw || toksMatch(next));
+          return new IterResult(tok, fail,
+                                fail ? [] : (forward ? subs[kw] : subs[next.string]),
+                                forward ? badSubs[kw] : badSubs[next.string]);
         } else { // Otherwise, remove the layer
           stack.pop();
         }
@@ -757,7 +590,7 @@
   /**
    * Finds the opening keyword which matches the
    * token at the current position
-   * @param {token} [kw] - The keyword to match
+   * @param {string} [kw] - The keyword to match
    * @returns {IterResult} The resulting matched opening keyword
    */
   TokenTape.prototype.findMatchingOpen = function(kw) {
@@ -766,7 +599,7 @@
   /**
    * Finds the opening keyword which matches the
    * token at the current position
-   * @param {token} [kw] - The keyword to match
+   * @param {string} [kw] - The keyword to match
    * @returns {IterResult} The resulting matched opening keyword
    */
   TokenTape.prototype.findMatchingClose = function(kw) {
@@ -779,7 +612,6 @@
    * @returns {IterResult} The matching parent token, if any
    */
   TokenTape.prototype.findMatchingParent = function(kw) {
-    kw = kw.string;
     var stack = [];
     var skip = 0;
     var parents = INV_SIMPLESUBKEYWORDS[kw];
@@ -814,63 +646,41 @@
   CodeMirror.registerHelper("fold", "pyret", function(cm, start) {
     var tstream = new TokenTape(cm, start.line, 0);
     function getOpenPos(tok) {
-      function getPostFunctionName(stream) {
-        var cur = stream.cur();
-        if (!cur) return null;
-        var last = Pos(cur.line, cur.end);
-        var newLast;
-        while (stream.next()) {
-          cur = stream.cur();
-          if (cur.line !== last.line)
-            break;
-          newLast = Pos(cur.line, cur.end);
-          if (cur.type === 'builtin' && cur.string === ':')
-            return newLast;
-        }
-        return last;
-      }
-      var tmp = tstream.copy();
-      var res;
-      if (isPrefix(tok)) {
+      if (tok.string === "fun") {
+        var tmp = tstream.copy();
         if (tmp.next()) {
           var tmpkw = tmp.cur();
-          if (tmpkw && tmpkw.type === 'function-name')
-            if (res = getPostFunctionName(tmp))
-              return res;
+          if (tmpkw && tmpkw.type === "function-name") {
+            var last = Pos(tmpkw.line, tmpkw.end);
+            var newLast;
+            while (tmp.next()) {
+              tmpkw = tmp.cur();
+              if (tmpkw.line !== last.line)
+                break;
+              newLast = Pos(tmpkw.line, tmpkw.end);
+              if (tmpkw.string === ":" && tmpkw.type === "builtin")
+                return newLast;
+            }
+            return last;
+          }
         }
-      } else if (tok.type === 'function-name') {
-        if (res = getPostFunctionName(tmp))
-          return res;
       }
       return Pos(tok.line, tok.end);
-    }
-    function validKwBuiltin(tok) {
-      return tok && tok.type.match(/keyword|builtin/) && tok.string.match(delimrx);
     }
     // If keyword is at the very beginning of the line,
     // findNext won't match it, so we manually do the first check.
     var openKw = tstream.cur();
-    if (!tstream.onDefinition()
-        && (!openKw || !openKw.type || !openKw.type.match(/keyword|builtin/))) {
-      while (true) {
-        openKw = tstream.findNext({type: /keyword|builtin|function-name/});
-        if (!openKw || validKwBuiltin(openKw) || tstream.onDefinition())
-          break;
-      }
-    }
+    if (!openKw || !openKw.type || !openKw.type.match(/keyword|builtin/))
+      openKw = tstream.findNext({type: /keyword|builtin/, string: delimrx});
     else // getOpenPos won't line up correctly otherwise
       tstream.next();
     for (;;) {
-      if (tstream.onDefinition() || isOpening(openKw)) {
+      if (isOpening(openKw)) {
         var startKw = getOpenPos(openKw);
-        var close = tstream.findMatchingClose(openKw);
+        var close = tstream.findMatchingClose(openKw.string);
         return close && close.token && {from: startKw, to: close.token.from};
       }
-      while (true) {
-        openKw = tstream.findNext({type: /keyword|builtin|function-name/});
-        if (!openKw || validKwBuiltin(openKw) || tstream.onDefinition())
-          break;
-      }
+      openKw = tstream.findNext({type: /keyword|builtin/, string: delimrx});
       if (!openKw || openKw.line !== start.line) return;
     }
   });
@@ -892,26 +702,12 @@
                                     string: /else|where|sharing/,
                                     pos: pos});
     }
-    // Lastly, check for unprefixed functions
-    if (!start) {
-      tstream = new TokenTape(cm, pos.line, pos.ch, range);
-      start = tstream.findAdjacent({type: /function-name/, pos: pos});
-      if (start) {
-        var onDef = tstream.onDefinition();
-        if (onDef === DefEnum.NONE) {
-          start = null;
-        } else if (onDef === DefEnum.PREFIXED) {
-          tstream.prev();
-          start = tstream.cur();
-        }
-      }
-    }
     if (!start || cmp(Pos(start.line, start.start), pos) > 0) return;
     var here = {from: Pos(start.line, start.start), to: Pos(start.line, start.end)};
     var other;
     if (isClosing(start)) {
       //tstream.prev(); // Push back one word to line up correctly
-      other = tstream.findMatchingOpen(start);
+      other = tstream.findMatchingOpen(start.string);
       return {open: other.token,
               close: here,
               at: "close",
@@ -920,7 +716,7 @@
               extraBad: other.badSubs};
     } else if (Object.keys(INV_SIMPLESUBKEYWORDS).indexOf(start.string) != -1) {
       // It's a subkeyword; find its parent
-      var parent = tstream.findMatchingParent(start);
+      var parent = tstream.findMatchingParent(start.string);
       if (parent.fail) {
         return {open: parent.token,
                 close: here,
@@ -933,7 +729,7 @@
                                             Pos(parent.token.line, parent.token.start),
                                             range);
     } else {
-      other = tstream.findMatchingClose(start);
+      other = tstream.findMatchingClose(start.string);
       return {open: here,
               close: other.token,
               at: "open",
