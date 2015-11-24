@@ -590,6 +590,12 @@
     var cur = this.cur();
     if (!cur || (cur.type !== 'function-name'))
       return false;
+    const IGNORE_ADJ = [{string: ':', type: 'builtin'}];
+    function nextAdjacent(tok) {
+      var next = copy.peekNext();
+      if (!next || matchesAny(next, IGNORE_ADJ)) return false;
+      return (tok.end === next.start && tok.line === next.line);
+    }
     var copy = this.copy();
     copy.grabDotted();
     var hasPrefix = isPrefix(copy.peekPrev());
@@ -626,6 +632,17 @@
       cur = copy.cur();
       if (!cur || cur.type !== 'variable')
         return false;
+      // Handle Dot-Separated type names
+      var wantPeriod = true;
+      while (nextAdjacent(cur)) {
+        copy.next();
+        cur = copy.cur();
+        if (!cur ||
+            !(wantPeriod ? (cur.type === 'builtin' && cur.string === '.')
+              : (cur.type === 'variable')))
+          return false;
+        wantPeriod = !wantPeriod;
+      }
       copy.next();
       cur = copy.cur();
       if (!cur || cur.type !== 'builtin')
@@ -972,7 +989,7 @@
             start = null;
           }
         }
-      }
+      } else start = null;
     }
     if (!start || cmp(Pos(start.line, start.start), pos) > 0) return;
     var here = {from: Pos(start.line, start.start), to: Pos(start.line, start.end)};
