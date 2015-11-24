@@ -6,7 +6,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
   // Keywords which usually precede named function definitions
-  const pyret_prefix_keywords = ["fun", "method"];
+  const pyret_prefix_keywords = ["fun", "method", "for"];
   // Keywords in builtins which can have children that are
   // functions with no prefixes (as defined in pyret_prefix_keywords)
   const pyret_noprefix_parent_keywords = ["data"];

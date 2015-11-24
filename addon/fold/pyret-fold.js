@@ -45,6 +45,14 @@
     return b.ch - c.ch;
   }
 
+  /**
+   * Returns true if the given {@link CodeMirror.Pos} is
+   * somewhere in or adjacent to the given open-close region
+   */
+  function inRegion(pos, open, close) {
+    return cmpClosest(open, close, pos) === 0;
+  }
+
   var pyretMode = CodeMirror.getMode({},"pyret");
   if (pyretMode.name === "null") {
     throw Error("Pyret Mode not Defined");
@@ -328,6 +336,42 @@
   };
 
   /**
+   * Checks if the function-name token that this
+   * {@link TokenTape} is currently on is preceded
+   * by dot-separated names. If so, it expands the
+   * current token to include them.
+   */
+  TokenTape.prototype.grabDotted = function() {
+    var cur = this.cur();
+    if (cur.type !== 'function-name') {
+      // Warn, since this shouldn't happen
+      console.warn("Called grabDotted while not on a function name");
+      return;
+    }
+    // Cannot be preceded by anything if we're already at the beginning
+    if (this.current.start === null) return;
+    // Now do the actual checking
+    var lastAdj = cur;
+    function isAdjacent(tok) { return lastAdj.start === tok.end && lastAdj.line === tok.line; }
+    var copy = this.copy();
+    // Just a double check that we actually are not at the beginning
+    if (!copy.prev()){ return; }
+    var next = copy.cur();
+    while (next
+           && (next.type === 'variable'
+               || (next.type === 'builtin' && next.string === '.'))
+           && (isAdjacent(next))) {
+      // next is part of the dotted name
+      lastAdj = next;
+      if (!copy.prev()) break;
+      next = copy.cur();
+    }
+    // Invalid name
+    if (lastAdj.type === 'builtin') return;
+    this.current.start = lastAdj.start;
+  };
+
+  /**
    * Moves this {@link TokenTape} to the next line
    * @returns {boolean} Whether the move was successful
    */
@@ -426,7 +470,7 @@
   TokenTape.prototype.cur = function() {
     var tok;
     var using = this.current.end;
-    using = (using === null) ? using - 1 : this.current.start + 1;
+    using = (using !== null) ? using : this.current.start + 1;
     tok = this.cm.getTokenAt(Pos(this.line, using));
     tok.line = this.line;
     return tok;
@@ -547,6 +591,7 @@
     if (!cur || (cur.type !== 'function-name'))
       return false;
     var copy = this.copy();
+    copy.grabDotted();
     var hasPrefix = isPrefix(copy.peekPrev());
     var next = copy.next();
     if (!next)
@@ -861,7 +906,9 @@
     else // getOpenPos won't line up correctly otherwise
       tstream.next();
     for (;;) {
-      if (tstream.onDefinition() || isOpening(openKw)) {
+      var onDef = tstream.onDefinition();
+      if ((onDef == DefEnum.UNPREFIXED) || isOpening(openKw)) {
+        if (onDef) tstream.grabDotted();
         var startKw = getOpenPos(openKw);
         var close = tstream.findMatchingClose(openKw);
         return close && close.token && {from: startKw, to: close.token.from};
@@ -892,7 +939,7 @@
                                     string: /else|where|sharing/,
                                     pos: pos});
     }
-    // Lastly, check for unprefixed functions
+    // Check for unprefixed functions
     if (!start) {
       tstream = new TokenTape(cm, pos.line, pos.ch, range);
       start = tstream.findAdjacent({type: /function-name/, pos: pos});
@@ -901,8 +948,29 @@
         if (onDef === DefEnum.NONE) {
           start = null;
         } else if (onDef === DefEnum.PREFIXED) {
+          tstream.grabDotted();
           tstream.prev();
           start = tstream.cur();
+        }
+      }
+    }
+    // Lastly, check if we're somewhere else in a dotted name
+    if (!start) {
+      tstream = new TokenTape(cm, pos.line, pos.ch, range);
+      start = tstream.findAdjacent({type: /builtin|variable/, pos: pos});
+      if (start && (start.type === 'builtin' ? start.string === '.' : true)) {
+        var nextFun = tstream.findNext({type: /function-name/, pos: pos});
+        if (!nextFun) start = null;
+        else {
+          tstream.grabDotted();
+          var funstart = Pos(tstream.line,tstream.current.start);
+          var funend = Pos(tstream.line,tstream.current.end);
+          if (inRegion(pos,funstart,funend)) {
+            tstream.prev();
+            start = tstream.cur();
+          } else {
+            start = null;
+          }
         }
       }
     }
