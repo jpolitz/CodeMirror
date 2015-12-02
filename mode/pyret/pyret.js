@@ -3,15 +3,25 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
   function wordRegexp(words) {
     return new RegExp("^((" + words.join(")|(") + "))(?![a-zA-Z0-9-_])");
   }
+  function toToken(type) {
+    return function(tstr) {
+      return {type: type, string: tstr};
+    };
+  }
   
   const pyret_indent_regex = new RegExp("^[a-zA-Z_][a-zA-Z0-9$_\\-]*");
   const pyret_closing_keywords = ["end"];
+  const pyret_closing_builtins = [";"];
+  const pyret_closing_tokens =
+        pyret_closing_keywords.map(toToken("keyword")).concat(
+          pyret_closing_builtins.map(toToken("builtin")));
   const pyret_opening_keywords_colon = ["try", "ask", "ref-graph", "block"];
   const pyret_opening_keywords_nocolon = ["fun", "when", "for", "if", "let",
                                           "cases", "data", "shared", "check",
                                           "except", "letrec", "lam", "method",
                                           "examples"];
   const pyret_opening_keywords = pyret_opening_keywords_colon.concat(pyret_opening_keywords_nocolon);
+  const pyret_opening_tokens = pyret_opening_keywords.map(toToken("keyword"));
   const pyret_keywords = 
     wordRegexp(["else if"].concat(pyret_opening_keywords_nocolon, pyret_closing_keywords,
                ["var", "rec", "import", "include", "provide", "type", "newtype",
@@ -708,7 +718,7 @@ CodeMirror.defineMode("pyret", function(config, parserConfig) {
 
     fold: "pyret",
 
-    delimiters: {opening: pyret_opening_keywords, closing: pyret_closing_keywords}
+    delimiters: {opening: pyret_opening_tokens, closing: pyret_closing_tokens}
 
   };
   return external;

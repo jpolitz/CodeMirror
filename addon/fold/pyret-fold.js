@@ -45,6 +45,72 @@
     return b.ch - c.ch;
   }
 
+  /**
+   * Returns a function which checks that
+   * the given field has one of the given
+   * values.
+   * @param {!string} fname - The name of the field to check
+   * @param {...*}   vals  - The values to check that the field is equal to
+   * @returns {function}
+   */
+  function fieldOneOf(fname,vals) {
+    var oneOf = Array.prototype.slice.call(arguments,1);
+    return function(obj) {
+      var fval = obj[fname]
+      for (var i = 0; i < oneOf.length; i++) {
+        if (fval === oneOf[i])
+          return true;
+      }
+      return false;
+    };
+  }
+
+  /**
+   * Returns a function which negates
+   * the return value of the given function
+   * @param {!function} func - The function to negate
+   * @returns {function}
+   */
+  function negate(func) {
+    return function() {
+      return !(func.apply(this,arguments));
+    }
+  }
+
+  /**
+   * Returns a function which extracts the
+   * given field from a given object
+   * @param {!string} fname - The field to extract
+   * @returns {function}
+   */
+  function getField(fname) {
+    return function(o) {
+      return o[fname];
+    }
+  }
+
+  /**
+   * Checks if the given array of strings
+   * contains duplicates
+   * Source: http://stackoverflow.com/questions/7376598
+   *  (It's a nifty trick)
+   * @param {!string[]} - The array to check
+   * @returns {boolean}
+   */
+  function hasDuplicates(array) {
+    // Uses valuesSoFar as a table and
+    // checks that there are no collisions
+    var valuesSoFar = Object.create(null);
+    for (var i = 0; i < array.length; ++i) {
+        var value = array[i];
+        if (value in valuesSoFar) {
+            return true;
+        }
+        valuesSoFar[value] = true;
+    }
+    return false;
+  }
+
   var pyretMode = CodeMirror.getMode({},"pyret");
   if (pyretMode.name === "null") {
     throw Error("Pyret Mode not Defined");
@@ -52,11 +118,28 @@
              !pyretMode.delimiters.opening ||      // and are valid
              !pyretMode.delimiters.closing) {
     throw Error("No correct delimiters defined in Pyret Mode");
+  } else if (pyretMode.delimiters.opening.some(negate(
+               fieldOneOf("type", "keyword", "builtin")))
+             || pyretMode.delimiters.closing.some(negate(
+               fieldOneOf("type", "keyword", "builtin")))) {
+    throw Error("Pyret Mode contains delimiters of unknown type");
   }
+  // For now, there is no need to hold onto the type information
+  // (See assumption below). The mode exports this information
+  // for future-proofing purposes.
+
   // Opening Delimiter Tokens
-  var DELIMS = pyretMode.delimiters.opening;
+  var DELIMS = pyretMode.delimiters.opening.map(getField("string"));
   // Closing Delimiter Tokents
-  var ENDDELIM = pyretMode.delimiters.closing;
+  var ENDDELIM = pyretMode.delimiters.closing.map(getField("string"));
+  // There should never be duplicates (same string, different type).
+  // If so, refactoring will be needed. An assertion of this is done
+  // here, but this nonetheless rests on the assumption that it is
+  // impossible to have the same string tokenize to both a keyword
+  // and a builtin.
+  if (hasDuplicates(DELIMS) || hasDuplicates(ENDDELIM)) {
+    throw Error("Pyret Mode contains duplicate delimiter string values");
+  }
   // Tokens with closing tokens other than "end"
   var SPECIALDELIM = [{start: "(", end: ")"},
                       {start: "[", end: "]"},
